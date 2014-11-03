@@ -245,8 +245,11 @@ void BuildStatus::PrintStatus(Edge* edge) {
   bool force_full_command = config_.verbosity == BuildConfig::VERBOSE;
 
   string to_print = edge->GetBinding("description");
-  if (to_print.empty() || force_full_command)
+  if (to_print.empty())
     to_print = edge->GetBinding("command");
+
+  if (force_full_command)
+    to_print += "\n" + edge->GetBinding("command");
 
   if (finished_edges_ == 0) {
     overall_rate_.Restart();
