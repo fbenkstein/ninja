@@ -17,6 +17,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <set>
+#include <queue>
 
 #ifdef _WIN32
 #include "getopt.h"
@@ -409,6 +411,35 @@ int ToolTargetsList(const vector<Node*>& nodes, int depth, int indent) {
   return 0;
 }
 
+// flat variant
+int ToolTargetsList(const vector<Node*>& nodes) {
+  set<Node*> seen_nodes;
+  queue<Node*> next_nodes;
+
+  for (vector<Node*>::const_iterator n = nodes.begin(); n != nodes.end(); ++n) {
+    next_nodes.push(*n);
+  }
+  while (!next_nodes.empty()) {
+    Node* n = next_nodes.front();
+    next_nodes.pop();
+    pair<set<Node*>::iterator, bool> ret = seen_nodes.insert(n);
+    if (ret.second) {
+      if (n->in_edge()) {
+        const char* target = n->path().c_str();
+        printf("%s: %s\n", target, n->in_edge()->rule_->name().c_str());
+        const vector<Node*>& inputs = n->in_edge()->inputs_;
+        for (vector<Node*>::const_iterator d = inputs.begin(),
+                                           E = inputs.end();
+                                           d != E; ++d) {
+          printf("  %s\n", (*d)->path().c_str());
+          next_nodes.push(*d);
+        }
+      }
+    }
+  }
+  return 0;
+}
+
 int ToolTargetsSourceList(State* state) {
   for (vector<Edge*>::iterator e = state->edges_.begin();
        e != state->edges_.end(); ++e) {
@@ -496,6 +527,7 @@ int NinjaMain::ToolDeps(int argc, char** argv) {
 
 int NinjaMain::ToolTargets(int argc, char* argv[]) {
   int depth = 1;
+  bool flat = false;
   if (argc >= 1) {
     string mode = argv[0];
     if (mode == "rule") {
@@ -511,9 +543,11 @@ int NinjaMain::ToolTargets(int argc, char* argv[]) {
         depth = atoi(argv[1]);
     } else if (mode == "all") {
       return ToolTargetsList(&state_);
+    } else if (mode == "flat") {
+      flat = true;
     } else {
       const char* suggestion =
-          SpellcheckString(mode.c_str(), "rule", "depth", "all", NULL);
+          SpellcheckString(mode.c_str(), "rule", "depth", "all", "flat", NULL);
       if (suggestion) {
         Error("unknown target tool mode '%s', did you mean '%s'?",
               mode.c_str(), suggestion);
@@ -527,7 +561,10 @@ int NinjaMain::ToolTargets(int argc, char* argv[]) {
   string err;
   vector<Node*> root_nodes = state_.RootNodes(&err);
   if (err.empty()) {
-    return ToolTargetsList(root_nodes, depth, 0);
+    if (flat)
+      return ToolTargetsList(root_nodes);
+    else
+      return ToolTargetsList(root_nodes, depth, 0);
   } else {
     Error("%s", err.c_str());
     return 1;
