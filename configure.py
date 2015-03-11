@@ -292,7 +292,7 @@ if platform.is_msvc():
         cflags.remove('/showIncludes')
     if platform.msvc_needs_fs():
         cflags.append('/FS')
-    ldflags = ['/DEBUG', '/libpath:$builddir']
+    ldflags = ['/DEBUG', '/libpath:$builddir', 'psapi.lib']
     if not options.debug:
         cflags += ['/Ox', '/DNDEBUG', '/GL']
         ldflags += ['/LTCG', '/OPT:REF', '/OPT:ICF']
