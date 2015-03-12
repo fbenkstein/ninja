@@ -79,6 +79,7 @@ TEST_F(ParserTest, RuleAttributes) {
 "  restat = a\n"
 "  rspfile = a\n"
 "  rspfile_content = a\n"
+"  hash_input = a\n"
 ));
 }
 

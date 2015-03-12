@@ -33,6 +33,7 @@
 #include "build.h"
 #include "build_log.h"
 #include "deps_log.h"
+#include "hash_log.h"
 #include "clean.h"
 #include "debug_flags.h"
 #include "disk_interface.h"
@@ -702,8 +703,11 @@ int NinjaMain::ToolRecompact(int argc, char* argv[]) {
   if (!EnsureBuildDirExists())
     return 1;
 
+  string err;
+
   if (!OpenBuildLog(/*recompact_only=*/true) ||
-      !OpenDepsLog(/*recompact_only=*/true))
+      !OpenDepsLog(/*recompact_only=*/true)  ||
+      !HashLog(kHashLogFileName, &disk_interface_).Recompact(&err, true))
     return 1;
 
   return 0;

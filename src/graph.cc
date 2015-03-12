@@ -54,7 +54,8 @@ bool Rule::IsReservedBinding(const string& var) {
       var == "pool" ||
       var == "restat" ||
       var == "rspfile" ||
-      var == "rspfile_content";
+      var == "rspfile_content" ||
+      var == "hash_input";
 }
 
 bool DependencyScan::RecomputeDirty(Edge* edge, string* err) {
@@ -176,12 +177,28 @@ bool DependencyScan::RecomputeOutputDirty(Edge* edge,
     }
 
     if (output_mtime < most_recent_input->mtime()) {
-      EXPLAIN("%soutput %s older than most recent input %s "
-              "(%d vs %d)",
-              used_restat ? "restat of " : "", output->path().c_str(),
-              most_recent_input->path().c_str(),
-              output_mtime, most_recent_input->mtime());
-      return true;
+      bool really_dirty = true;
+      if (edge->GetBindingBool("hash_input")) {
+        string err;
+        really_dirty = hash_log().EdgeChanged(edge, &err);
+        if (!err.empty()) {
+          really_dirty = true; // in case of an error we behave as if hashing
+          Error(err.c_str());  // would be disabled, but we log the error
+        }
+      }
+
+      if (really_dirty) {
+        EXPLAIN("%soutput %s older than most recent input %s "
+                "(%d vs %d)",
+                used_restat ? "restat of " : "", output->path().c_str(),
+                most_recent_input->path().c_str(),
+                output_mtime, most_recent_input->mtime());
+        return true;
+      } else {
+        EXPLAIN("output %s older than most recent input, but hashed "
+                "contents of all inputs are unchanged",
+              output->path().c_str());
+      }
     }
   }
 
