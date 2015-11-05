@@ -21,7 +21,12 @@
 #include <string>
 
 #include <stdio.h>
+
+#ifdef _WIN32
+#include "win32port.h"
+#else
 #include <stdint.h>
+#endif
 
 #include "disk_interface.h"
 
