@@ -71,8 +71,12 @@ bool DryRunCommandRunner::WaitForCommand(Result* result) {
 
 }  // namespace
 
+BuildStatusInterface::BuildStatusInterface(const BuildConfig& config)
+    : config_(config)
+{}
+
 BuildStatus::BuildStatus(const BuildConfig& config)
-    : config_(config),
+    : BuildStatusInterface(config),
       start_time_millis_(GetTimeMillis()),
       started_edges_(0), finished_edges_(0), total_edges_(0),
       progress_status_format_(NULL),

@@ -30,7 +30,7 @@
 #include "util.h"  // int64_t
 
 struct BuildLog;
-struct BuildStatus;
+struct BuildStatusInterface;
 struct DiskInterface;
 struct Edge;
 struct Node;
@@ -182,7 +182,7 @@ struct Builder {
   const BuildConfig& config_;
   Plan plan_;
   auto_ptr<CommandRunner> command_runner_;
-  BuildStatus* status_;
+  BuildStatusInterface* status_;
 
  private:
    bool ExtractDeps(CommandRunner::Result* result, const string& deps_type,
@@ -198,13 +198,27 @@ struct Builder {
 };
 
 /// Tracks the status of a build: completion fraction, printing updates.
-struct BuildStatus {
-  explicit BuildStatus(const BuildConfig& config);
-  void PlanHasTotalEdges(int total);
-  void BuildEdgeStarted(Edge* edge);
-  void BuildEdgeFinished(Edge* edge, bool success, const string& output,
+struct BuildStatusInterface {
+  explicit BuildStatusInterface(const BuildConfig& config);
+  virtual ~BuildStatusInterface() {}
+  virtual void PlanHasTotalEdges(int total) = 0;
+  virtual void BuildEdgeStarted(Edge* edge) = 0;
+  virtual void BuildEdgeFinished(Edge* edge, bool success, const string& output,
+                                 int* start_time, int* end_time) = 0;
+  virtual void BuildFinished() = 0;
+  virtual string FormatProgressStatus(const char* progress_status_format) const = 0;
+
+protected:
+  const BuildConfig& config_;
+};
+
+struct BuildStatus : BuildStatusInterface {
+  BuildStatus(const BuildConfig& config);
+  virtual void PlanHasTotalEdges(int total);
+  virtual void BuildEdgeStarted(Edge* edge);
+  virtual void BuildEdgeFinished(Edge* edge, bool success, const string& output,
                          int* start_time, int* end_time);
-  void BuildFinished();
+  virtual void BuildFinished();
 
   /// Format the progress status string by replacing the placeholders.
   /// See the user manual for more information about the available
@@ -212,10 +226,8 @@ struct BuildStatus {
   /// @param progress_status_format The format of the progress status.
   string FormatProgressStatus(const char* progress_status_format) const;
 
- private:
+ protected:
   void PrintStatus(Edge* edge);
-
-  const BuildConfig& config_;
 
   /// Time the build started.
   int64_t start_time_millis_;
