@@ -31,3 +31,7 @@ TAGS
 .ninja_log
 
 HashLogTest*
+
+/setup.cfg
+/pyninja.egg-info
+/dist
