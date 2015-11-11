@@ -314,6 +314,35 @@ private:
     Edge();
 };
 
+%define string_map_to_dict(typemap_pattern, item_type)
+%typemap(out) typemap_pattern %{
+    $result = PyDict_New();
+
+    if ($result) {
+        for ($*1_type::iterator it = $1->begin(), itend = $1->end(); it != itend; ++it)  {
+            PyObject *value = SWIG_NewPointerObj(SWIG_as_voidptr(it->second), $descriptor(item_type), 0);
+            if (!value) {
+                Py_CLEAR($result);
+                break;
+            }
+
+            StringPiece sp(it->first);
+
+            if (PyDict_SetItemString($result, sp.str_, value)) {
+                Py_CLEAR($result);
+                Py_CLEAR(value);
+                break;
+            }
+
+            Py_CLEAR(value);
+        }
+    }
+%}
+%enddef
+
+string_map_to_dict(SWIGTYPE *State::rules_, Rule *)
+string_map_to_dict(SWIGTYPE *State::pools_, Pool *)
+string_map_to_dict(SWIGTYPE *State::paths_, Node *)
 
 struct State {
     static Pool kDefaultPool;
@@ -327,6 +356,9 @@ struct State {
     EdgeVector edges_;
     BindingEnv bindings_;
     NodeVector defaults_;
+    map<string, const Rule*> rules_;
+    map<string, Pool*> pools_;
+    State::Paths paths_;
 
     Pool* LookupPool(const string& pool_name);
     Node* LookupNode(StringPiece path) const;
