@@ -159,11 +159,28 @@ typedef string* boolean_error_message_t;
 
 int64_t GetTimeMillis();
 
-struct BindingEnv {
+struct Env {
+    virtual ~Env() {}
+    virtual string LookupVariable(const string& var) = 0;
+};
+
+struct BindingEnv : Env {
+    virtual ~BindingEnv();
     string LookupVariable(const string&);
+    void AddBinding(const string& key, const string& val);
 
 private:
     BindingEnv();
+};
+
+struct EvalString {
+    string Evaluate(Env* env) const;
+    void Clear() { parsed_.clear(); }
+    bool empty() const { return parsed_.empty(); }
+
+    void AddText(StringPiece text);
+    void AddSpecial(StringPiece text);
+    string Serialize() const;
 };
 
 struct BuildConfig {
@@ -247,10 +264,9 @@ private:
 struct Rule {
     explicit Rule(const string& name);
     const string& name() const { return name_; }
-    // TODO: typedef map<string, EvalString> Bindings;
     void AddBinding(const string& key, const EvalString& val);
     static bool IsReservedBinding(const string& var);
-    // TODO: const EvalString* GetBinding(const string& key) const;
+    const EvalString* GetBinding(const string& key) const;
 private:
     Rule();
 };
