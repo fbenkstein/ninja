@@ -202,6 +202,32 @@ struct BuildConfig {
     double max_memory_usage;
 };
 
+%typemap(in, numinputs=0) set<Edge*> *ready_queue (set<Edge*> temp) %{
+    $1 = &temp;
+%}
+
+%typemap(argout) set<Edge*> *ready_queue %{
+    Py_CLEAR($result);
+
+    $result = PySet_New(NULL);
+
+    for ($*1_type::iterator it = $1->begin(), itend = $1->end(); it != itend; ++it) {
+        PyObject *value = SWIG_NewPointerObj(SWIG_as_voidptr(*it), $descriptor(Edge *), 0);
+        if (!value) {
+            Py_CLEAR($result);
+            break;
+        }
+
+        if (PySet_Add($result, value)) {
+            Py_CLEAR(value);
+            Py_CLEAR($result);
+            break;
+        }
+
+        Py_CLEAR(value);
+    }
+%}
+
 struct Pool {
     explicit Pool(const string& name, int depth);
     bool is_valid() const;
@@ -211,7 +237,7 @@ struct Pool {
     void EdgeScheduled(const Edge& edge);
     void EdgeFinished(const Edge& edge);
     void DelayEdge(Edge* edge);
-    // TODO: void RetrieveReadyEdges(set<Edge*>* ready_queue);
+    void RetrieveReadyEdges(set<Edge*>* ready_queue);
     void Dump() const;
 };
 
