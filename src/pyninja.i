@@ -2,8 +2,12 @@
 
 // Support automatic mapping from string to Python str.
 %include "std_string.i"
+// For int64_t etc.
+%include "stdint.i"
 // exception handling
 %include "exception.i"
+// symbol constants for warning ids
+%include "swigwarn.swg"
 
 %{
 #include "manifest_parser.h"
@@ -153,6 +157,8 @@ typedef string* boolean_error_message_t;
 %rename(version) kNinjaVersion;
 %constant const char *kNinjaVersion;
 
+int64_t GetTimeMillis();
+
 struct BindingEnv {
     string LookupVariable(const string&);
 
@@ -172,6 +178,19 @@ struct BuildConfig {
   int failures_allowed;
   double max_load_average;
   double max_memory_usage;
+};
+
+struct Pool {
+    explicit Pool(const string& name, int depth);
+    bool is_valid() const;
+    int depth() const;
+    const string& name() const;
+    bool ShouldDelayEdge() const;
+    void EdgeScheduled(const Edge& edge);
+    void EdgeFinished(const Edge& edge);
+    void DelayEdge(Edge* edge);
+    // TODO: void RetrieveReadyEdges(set<Edge*>* ready_queue);
+    void Dump() const;
 };
 
 // Vector helper for vector<Node*> and vector<Edge*>.
@@ -206,24 +225,93 @@ struct Edge;
 VectorHelper(Node);
 VectorHelper(Edge);
 
+%warnfilter(SWIGWARN_PARSE_BUILTIN_NAME) Node::id;
+
 struct Node {
+    const string& path() const;
+    string PathDecanonicalized() const;
+    bool dirty() const;
+    void set_dirty(bool dirty);
+    void MarkDirty();
     Edge* in_edge();
+    int id() const;
+    void set_id(int id);
+    const EdgeVector &out_edges();
+    void AddOutEdge(Edge* edge);
+    void Dump(const char* prefix="");
 
 private:
     Node();
 };
 
-struct Edge {
+struct Rule {
+    explicit Rule(const string& name);
+    const string& name() const { return name_; }
+    // TODO: typedef map<string, EvalString> Bindings;
+    void AddBinding(const string& key, const EvalString& val);
+    static bool IsReservedBinding(const string& var);
+    // TODO: const EvalString* GetBinding(const string& key) const;
+private:
+    Rule();
+};
 
+%warnfilter(SWIGWARN_PARSE_BUILTIN_NAME) Edge::hash;
+
+%feature("python:slot", "tp_hash", functype="hashfunc") Edge::hash;
+struct Edge {
+    bool AllInputsReady() const;
+    string EvaluateCommand(bool incl_rsp_file = false);
+    string GetBinding(const string& key);
+    bool GetBindingBool(const string& key);
+    string GetUnescapedDepfile();
+    string GetUnescapedRspfile();
+    void Dump(const char* prefix="") const;
+    const Rule* rule_;
+    Pool* pool_;
+    NodeVector inputs_;
+    NodeVector outputs_;
+    BindingEnv* env_;
+    bool outputs_ready_;
+    bool deps_missing_;
+    const Rule& rule() const;
+    Pool* pool() const;
+    int weight() const;
+    bool outputs_ready();
+    int implicit_deps_;
+    int order_only_deps_;
+    bool is_implicit(size_t index);
+    bool is_order_only(size_t index);
+    bool is_phony() const;
+    bool use_console() const;
+
+    %extend {
+        long hash() const {
+            return reinterpret_cast<long>($self);
+        }
+    }
 private:
     Edge();
 };
 
 
 struct State {
-    BindingEnv bindings_;
+    static Pool kDefaultPool;
+    static Pool kConsolePool;
+    static const Rule kPhonyRule;
 
+    void AddRule(const Rule* rule);
+    void AddPool(Pool* pool);
+    Edge* AddEdge(const Rule* rule);
+
+    EdgeVector edges_;
+    BindingEnv bindings_;
+    NodeVector defaults_;
+
+    Pool* LookupPool(const string& pool_name);
     Node* LookupNode(StringPiece path) const;
+    const Rule* LookupRule(const string& rule_name);
+
+    NodeVector RootNodes(error_message_empty_t err);
     NodeVector DefaultNodes(error_message_empty_t err);
 };
 
@@ -325,6 +413,16 @@ DiskInterface *get_RealDiskInterface() {
     $1 = get_RealDiskInterface();
 }
 
+struct BuildStatusInterface;
+
+%typemap(memberin) BuildStatusInterface *status_ %{
+    if ($1) {
+        delete $1;
+    }
+
+    $1 = $input;
+%}
+
 struct Builder {
     Builder(State* state, const BuildConfig& config,
             BuildLog* build_log, DepsLog* deps_log,
@@ -334,6 +432,51 @@ struct Builder {
     bool AlreadyUpToDate();
     boolean_and_message_t AddTarget(Node* target, boolean_error_message_t err);
     success_and_message_t Build(error_message_t err);
+
+    BuildStatusInterface* status_;
+};
+
+%typemap(in, numinputs=0) (int *start_time, int *end_time) (int temp_start_time, int temp_end_time) %{
+    $1 = &temp_start_time;
+    $2 = &temp_end_time;
+%}
+
+%typemap(argout) (int *start_time, int *end_time) %{
+    Py_CLEAR($result);
+    $result = Py_BuildValue("(ii)", *$1, *$2);
+%}
+
+%typemap(directorargout) (int *start_time, int *end_time) %{
+    if ($result) {
+        if (!PyArg_ParseTuple($result, "II", $1, $2)) {
+            throw Swig::DirectorMethodException();
+        }
+    }
+%}
+
+%feature(director) BuildStatusInterface;
+struct BuildStatusInterface {
+    explicit BuildStatusInterface(const BuildConfig& config);
+    virtual ~BuildStatusInterface() {}
+    virtual void PlanHasTotalEdges(int total) = 0;
+    virtual void BuildEdgeStarted(Edge* edge) = 0;
+    virtual void BuildEdgeFinished(Edge* edge, bool success, const string& output,
+                                   int* start_time, int* end_time) = 0;
+    virtual void BuildFinished() = 0;
+    virtual string FormatProgressStatus(const char* progress_status_format) const = 0;
+
+protected:
+    const BuildConfig& config_;
+};
+
+struct BuildStatus : BuildStatusInterface {
+    explicit BuildStatus(const BuildConfig& config);
+    virtual void PlanHasTotalEdges(int total);
+    virtual void BuildEdgeStarted(Edge* edge);
+    virtual void BuildEdgeFinished(Edge* edge, bool success, const string& output,
+                                   int* start_time, int* end_time);
+    virtual void BuildFinished();
+    virtual string FormatProgressStatus(const char* progress_status_format) const;
 };
 
 // Switch on newer language features in the generated Python module.
