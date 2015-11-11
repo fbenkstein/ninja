@@ -24,6 +24,9 @@
 
 typedef std::string string;
 
+// By default make all variables immutable.
+%immutable;
+
 // Provide a custom exception class.  Rather than creating this class
 // in C++ it is easier to make this a pure python class and add it
 // during the initialization of the wrapper module.
@@ -184,17 +187,19 @@ struct EvalString {
 };
 
 struct BuildConfig {
-  enum Verbosity {
-    NORMAL,
-    QUIET,  // No output -- used when testing.
-    VERBOSE
-  };
-  Verbosity verbosity;
-  bool dry_run;
-  int parallelism;
-  int failures_allowed;
-  double max_load_average;
-  double max_memory_usage;
+    enum Verbosity {
+        NORMAL,
+        QUIET,  // No output -- used when testing.
+        VERBOSE
+    };
+
+    %feature("immutable", "0");
+    Verbosity verbosity;
+    bool dry_run;
+    int parallelism;
+    int failures_allowed;
+    double max_load_average;
+    double max_memory_usage;
 };
 
 struct Pool {
@@ -449,6 +454,7 @@ struct Builder {
     boolean_and_message_t AddTarget(Node* target, boolean_error_message_t err);
     success_and_message_t Build(error_message_t err);
 
+    %feature("immutable", "0");
     BuildStatusInterface* status_;
 };
 
