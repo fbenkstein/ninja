@@ -2,12 +2,19 @@
 
 // Support automatic mapping from string to Python str.
 %include "std_string.i"
-// For int64_t etc.
-%include "stdint.i"
 // exception handling
 %include "exception.i"
 // symbol constants for warning ids
 %include "swigwarn.swg"
+// For int64_t etc.  Unfortunately this will also try to include
+// <stdint.h> which is missing on Windows.
+%{
+#if 0
+%}
+%include "stdint.i"
+%{
+#endif
+%}
 
 %{
 #include "manifest_parser.h"

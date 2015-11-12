@@ -114,7 +114,7 @@ if platform.system() == "Windows":
         _pyninja_sources.append('src/%s.cc' % name)
     if platform.python_compiler().startswith("MSC"):
         _pyninja_sources.append('src/minidump-win32.cc')
-    _pyninja_sources.append('src/getopt.cc')
+    _pyninja_sources.append('src/getopt.c')
 else:
     _pyninja_sources.append('src/subprocess-posix.cc')
 
@@ -124,6 +124,8 @@ if platform.python_compiler().startswith("MSC"):
         '/WX',  # Warnings as errors.
         '/wd4530', '/wd4100', '/wd4706',
         '/wd4512', '/wd4800', '/wd4702', '/wd4819',
+        # disable warning about conditional constant expressions
+        '/wd4127',
         # Disable warnings about passing "this" during initialization.
         '/wd4355',
         '/wd4267',
@@ -133,6 +135,7 @@ if platform.python_compiler().startswith("MSC"):
         ('_CRT_SECURE_NO_WARNINGS', None),
         ('_VARIADIC_MAX', '10'),
     ]
+    libraries = ["psapi"]
 else:
     extra_compile_args = [
         '-Wno-deprecated',
@@ -140,6 +143,7 @@ else:
         '-Wno-unused-parameter',
     ]
     define_macros = []
+    libraries = []
 
 if platform.system() == "Linux":
     define_macros.append(("USE_POLL", None))
@@ -164,6 +168,7 @@ _pyninja_module = Extension(
         "-modernargs",
         "-extranative",
     ],
+    libraries=libraries,
     extra_compile_args=extra_compile_args,
     include_dirs=["src"],
     define_macros=define_macros,
