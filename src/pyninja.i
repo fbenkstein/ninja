@@ -98,7 +98,6 @@ typedef string* error_message_t;
 %typemap(argout) error_message_t %{
     if (!$result) {
         PyErr_SetString(NinjaError, $1->c_str());
-        Py_CLEAR($result);
         SWIG_fail;
     }
 %}
@@ -116,7 +115,6 @@ typedef string* error_message_empty_t;
 %typemap(argout) error_message_empty_t %{
     if (!$1->empty()) {
         PyErr_SetString(NinjaError, $1->c_str());
-        Py_CLEAR($result);
         SWIG_fail;
     }
 %}
@@ -140,7 +138,6 @@ typedef string* boolean_error_message_t;
 %typemap(argout) boolean_error_message_t %{
     if (!($result && PyObject_IsTrue($result)) && !$1->empty()) {
         PyErr_SetString(NinjaError, $1->c_str());
-        Py_CLEAR($result);
         SWIG_fail;
     }
 %}
@@ -214,20 +211,16 @@ struct BuildConfig {
 %}
 
 %typemap(argout) set<Edge*> *ready_queue %{
-    Py_CLEAR($result);
-
     $result = PySet_New(NULL);
 
     for ($*1_type::iterator it = $1->begin(), itend = $1->end(); it != itend; ++it) {
         PyObject *value = SWIG_NewPointerObj(SWIG_as_voidptr(*it), $descriptor(Edge *), 0);
         if (!value) {
-            Py_CLEAR($result);
             break;
         }
 
         if (PySet_Add($result, value)) {
             Py_CLEAR(value);
-            Py_CLEAR($result);
             break;
         }
 
@@ -363,14 +356,12 @@ private:
         for ($*1_type::iterator it = $1->begin(), itend = $1->end(); it != itend; ++it)  {
             PyObject *value = SWIG_NewPointerObj(SWIG_as_voidptr(it->second), $descriptor(item_type), 0);
             if (!value) {
-                Py_CLEAR($result);
                 break;
             }
 
             StringPiece sp(it->first);
 
             if (PyDict_SetItemString($result, sp.str_, value)) {
-                Py_CLEAR($result);
                 Py_CLEAR(value);
                 break;
             }
@@ -452,7 +443,6 @@ typedef ManifestParser::FileReader FileReader;
 
 %typemap(argout) string *content %{
     if ($result) {
-        Py_CLEAR($result);
         $result = PyString_FromStringAndSize($1->c_str(), $1->size());
     }
 %}
@@ -480,10 +470,6 @@ typedef ManifestParser::FileReader FileReader;
 %}
 
 %typemap(directorargout) error_message_t %{
-    if ($result) {
-        Py_CLEAR($result);
-    }
-
     if (PyErr_Occurred()) {
         PyObject *str = PyObject_Str(PyErr_Occurred());
         char *data;
@@ -493,7 +479,6 @@ typedef ManifestParser::FileReader FileReader;
             $1->assign(data, size);
             PyErr_Clear();
         } else {
-            Py_CLEAR(str);
             throw Swig::DirectorMethodException();
         }
 
@@ -597,7 +582,6 @@ struct Builder {
 %}
 
 %typemap(argout) (int *start_time, int *end_time) %{
-    Py_CLEAR($result);
     $result = Py_BuildValue("(ii)", *$1, *$2);
 %}
 
