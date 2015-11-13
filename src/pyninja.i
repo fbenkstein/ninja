@@ -446,9 +446,68 @@ PyObject *CanonicalizePath(const string &path) {
 typedef ManifestParser::FileReader FileReader;
 %}
 
+%typemap(in, numinputs=0) string *content (string temp) %{
+    $1 = &temp;
+%}
+
+%typemap(argout) string *content %{
+    if ($result) {
+        Py_CLEAR($result);
+        $result = PyString_FromStringAndSize($1->c_str(), $1->size());
+    }
+%}
+
+%typemap(directorargout) string *content {
+    char *data;
+    Py_ssize_t size;
+
+    if ($result && PyString_AsStringAndSize($result, &data, &size) == 0) {
+        $1->assign(data, size);
+    } else {
+        throw Swig::DirectorMethodException();
+    }
+}
+
+// Propagate Python exceptions IOError and OSError from FileReader::ReadFile through the *err result;
+%feature("director:except") FileReader::ReadFile %{
+    if (!PyErr_GivenExceptionMatches($error, PyExc_IOError) && !PyErr_GivenExceptionMatches($error, PyExc_OSError)) {
+        throw Swig::DirectorMethodException();
+    }
+%}
+
+%typemap(directorout) success_and_message_t FileReader::ReadFile %{
+    // Ignore actual result.  Conversion is handled below.
+%}
+
+%typemap(directorargout) error_message_t %{
+    if ($result) {
+        Py_CLEAR($result);
+    }
+
+    if (PyErr_Occurred()) {
+        PyObject *str = PyObject_Str(PyErr_Occurred());
+        char *data;
+        Py_ssize_t size;
+
+        if (str && PyString_AsStringAndSize(str, &data, &size) == 0) {
+            $1->assign(data, size);
+            PyErr_Clear();
+        } else {
+            Py_CLEAR(str);
+            throw Swig::DirectorMethodException();
+        }
+
+        Py_CLEAR(str);
+        c_result = false;
+    } else {
+        c_result = true;
+    }
+%}
+
+%feature(director) FileReader;
 struct FileReader {
     virtual ~FileReader() {}
-    virtual bool ReadFile(const string& path, string* content, string* err) = 0;
+    virtual success_and_message_t ReadFile(const string& path, string* content, error_message_t err) = 0;
 };
 
 %{
@@ -460,7 +519,7 @@ struct RealFileReader : public FileReader {
 %}
 
 struct RealFileReader : FileReader {
-    virtual bool ReadFile(const string& path, string* content, string* err);
+    virtual success_and_message_t ReadFile(const string& path, string* content, error_message_t);
 };
 
 %{
