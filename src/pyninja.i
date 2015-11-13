@@ -281,6 +281,9 @@ VectorHelper(Node);
 VectorHelper(Edge);
 
 %warnfilter(SWIGWARN_PARSE_BUILTIN_NAME) Node::id;
+%warnfilter(SWIGWARN_PARSE_BUILTIN_NAME) Node::hash;
+
+%feature("python:slot", "tp_hash", functype="hashfunc") Node::hash;
 
 struct Node {
     const string& path() const;
@@ -295,6 +298,11 @@ struct Node {
     void AddOutEdge(Edge* edge);
     void Dump(const char* prefix="");
 
+    %extend {
+        long hash() const {
+            return reinterpret_cast<long>($self);
+        }
+    }
 private:
     Node();
 };
