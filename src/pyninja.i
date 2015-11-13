@@ -469,6 +469,7 @@ FileReader *get_RealFileReader() {
 struct ManifestParser {
     ManifestParser(State* state, FileReader* file_reader);
     success_and_message_t Load(const string& filename, error_message_t err);
+    success_and_message_t ParseTest(const string& input, error_message_t err);
 };
 
 typedef int TimeStamp;
