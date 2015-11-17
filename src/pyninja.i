@@ -29,6 +29,9 @@
 #include "metrics.h"
 %}
 
+// Disable dynamic attributes on instances of wrapper classes.
+%pythonnondynamic;
+
 typedef std::string string;
 
 // By default make all variables immutable.
@@ -401,6 +404,7 @@ struct State {
 };
 
 %feature(director) BuildLogUser;
+%pythondynamic BuildLogUser;
 struct BuildLogUser {
     virtual ~BuildLogUser();
     virtual bool IsPathDead(StringPiece s) const = 0;
@@ -490,6 +494,7 @@ typedef ManifestParser::FileReader FileReader;
 %}
 
 %feature(director) FileReader;
+%pythondynamic FileReader;
 struct FileReader {
     virtual ~FileReader() {}
     virtual success_and_message_t ReadFile(const string& path, string* content, error_message_t err) = 0;
@@ -594,6 +599,7 @@ struct Builder {
 %}
 
 %feature(director) BuildStatusInterface;
+%pythondynamic BuildStatusInterface;
 struct BuildStatusInterface {
     explicit BuildStatusInterface(const BuildConfig& config);
     virtual ~BuildStatusInterface() {}
