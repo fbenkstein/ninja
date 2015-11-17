@@ -32,6 +32,9 @@
 // Disable dynamic attributes on instances of wrapper classes.
 %pythonnondynamic;
 
+// Disable threading globally.
+%nothreadallow;
+
 typedef std::string string;
 
 // By default make all variables immutable.
@@ -410,11 +413,15 @@ struct BuildLogUser {
     virtual bool IsPathDead(StringPiece s) const = 0;
 };
 
+%threadallow BuildLog::Load;
+%threadallow BuildLog::OpenForWrite;
 struct BuildLog {
     success_and_message_t Load(const string& path, error_message_t err);
     success_and_message_t OpenForWrite(const string& path, const BuildLogUser& user, error_message_t err);
 };
 
+%threadallow DepsLog::Load;
+%threadallow DepsLog::OpenForWrite;
 struct DepsLog {
     success_and_message_t Load(const string& path, State* state, error_message_t err);
     success_and_message_t OpenForWrite(const string& path, error_message_t err);
@@ -523,6 +530,7 @@ FileReader *get_RealFileReader() {
     $1 = get_RealFileReader();
 }
 
+%threadallow ManifestParser::Load;
 struct ManifestParser {
     ManifestParser(State* state, FileReader* file_reader);
     success_and_message_t Load(const string& filename, error_message_t err);
@@ -567,6 +575,7 @@ struct BuildStatusInterface;
     $1 = $input;
 %}
 
+%threadallow Builder::Build;
 struct Builder {
     Builder(State* state, const BuildConfig& config,
             BuildLog* build_log, DepsLog* deps_log,
