@@ -633,6 +633,14 @@ struct BuildStatus : BuildStatusInterface {
     virtual string FormatProgressStatus(const char* progress_status_format) const;
 };
 
+%{
+#include "edit_distance.h"
+%}
+
+// EditDistance actually takes const StringPiece& but lying about it
+// here makes the parameter conversion easier.
+int EditDistance(StringPiece s1, StringPiece s2, bool allow_replacements, int max_edit_distance);
+
 // Switch on newer language features in the generated Python module.
 %pythonbegin %{
 from __future__ import print_function, division
