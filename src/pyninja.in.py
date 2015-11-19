@@ -153,7 +153,7 @@ def config_from_options(options):
         config.max_load_average = options.max_load
 
     if options.max_memory is not None:
-        config.max_memory_usage = config.max_memory / 100
+        config.max_memory_usage = options.max_memory / 100
 
     return config
 
