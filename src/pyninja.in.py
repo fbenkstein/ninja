@@ -157,6 +157,23 @@ def config_from_options(options):
 
     return config
 
+def set_debug_flags(flags):
+    for flag in flags:
+        if flag == "list":
+            print("""debugging modes:
+  explain  explain what caused a command to execute
+  keeprsp  don't delete @response files on success""")
+            if os.name == "nt":
+                print("  nostatcache  don't batch stat() calls per directory and cache them")
+            print("multiple modes can be enabled via -d FOO -d BAR")
+            sys.exit(1)
+        elif flag == "explain":
+            cvar.explaining = True
+        elif flag == "keeprsp":
+            cvar.keep_rsp = True
+        elif flag == "nostatcache":
+            cvar.experimental_statcache = False
+
 def main():
     from optparse import OptionParser
     default_job_count = multiprocessing.cpu_count() + 2
@@ -170,8 +187,12 @@ def main():
     option_parser.add_option("-n", dest="dry_run", help="dry run (don't run commands but act like they succeeded)", action="store_true", default=False)
     option_parser.add_option("-k", dest="max_failures", help="keep going until N jobs fail [default=1]", type=int, default=1)
     option_parser.add_option("-v", dest="show_commands", help="show all command lines while building", action="store_true", default=False)
+    option_parser.add_option("-d", dest="debug_flags", metavar="MODE", help="enable debugging (use -d list to list modes)",
+                             action="append", choices=["explain", "keeprsp", "nostatcache", "list"])
 
     options, targets = option_parser.parse_args()
+
+    set_debug_flags(options.debug_flags)
 
     if options.dir is not None:
         print("pyninja: Entering directory `%s'" % options.dir);

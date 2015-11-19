@@ -641,6 +641,21 @@ struct BuildStatus : BuildStatusInterface {
 // here makes the parameter conversion easier.
 int EditDistance(StringPiece s1, StringPiece s2, bool allow_replacements, int max_edit_distance);
 
+%{
+#include "debug_flags.h"
+%}
+
+// Expose debug flags without the "g_" prefix.
+%define ninja_debug_flag(name)
+%rename(#name) g_ ## name;
+%feature("immutable", "0") g_ ## name;
+bool g_ ## name;
+%enddef
+
+ninja_debug_flag(explaining)
+ninja_debug_flag(keep_rsp)
+ninja_debug_flag(experimental_statcache)
+
 // Switch on newer language features in the generated Python module.
 %pythonbegin %{
 from __future__ import print_function, division
