@@ -656,6 +656,83 @@ ninja_debug_flag(explaining)
 ninja_debug_flag(keep_rsp)
 ninja_debug_flag(experimental_statcache)
 
+%{
+#include "clean.h"
+%}
+
+%typemap(in) (int target_count, char *targets[]) (vector<char*> v, PyObject *iterator, PyObject *item, PyObject *strings = NULL) {
+    iterator = PyObject_GetIter($input);
+
+    if (iterator == NULL)
+        SWIG_fail;
+
+    strings = PyList_New(0);
+
+    if (strings == NULL) {
+        Py_CLEAR(iterator);
+        SWIG_fail;
+    }
+
+    while ((item = PyIter_Next(iterator)) != NULL) {
+        if (!PyString_Check(item)) {
+            PyErr_Format(PyExc_TypeError, "items must be str, not %200s", item->ob_type->tp_name);
+            Py_CLEAR(item);
+            break;
+        }
+
+        // Keep around a reference to the string so it doesn't get
+        // freed while the function is running.
+        if (PyList_Append(strings, item) != 0) {
+            Py_CLEAR(item);
+            break;
+        }
+
+        v.push_back(PyString_AS_STRING(item));
+
+        Py_CLEAR(item);
+    }
+
+    Py_CLEAR(iterator);
+
+    if (PyErr_Occurred()) {
+        Py_CLEAR(strings);
+        SWIG_fail;
+    }
+
+    if (v.empty()) {
+        PyErr_SetString(PyExc_ValueError, "not enough items");
+        SWIG_fail;
+    }
+
+    $1 = (int)v.size();
+    $2 = &v[0];
+}
+
+%typemap(freearg) (int target_count, char *targets[]) {
+    Py_CLEAR(strings$argnum);
+}
+
+// Use  same typemap for rules as for targets.
+%apply (int target_count, char *targets[]) { (int rule_count, char *rules[]) };
+
+struct Cleaner {
+    Cleaner(State* state, const BuildConfig& config);
+    Cleaner(State* state,
+            const BuildConfig& config,
+            DiskInterface* disk_interface);
+    int CleanTarget(Node* target);
+    int CleanTarget(const char* target);
+    int CleanTargets(int target_count, char* targets[]);
+    int CleanAll(bool generator = false);
+    int CleanRule(const Rule* rule);
+    int CleanRule(const char* rule);
+    int CleanRules(int rule_count, char* rules[]);
+    int cleaned_files_count() const;
+    bool IsVerbose() const;
+};
+
+%clear (int target_count, char *targets[]), (int rule_count, char *rules[]);
+
 // Switch on newer language features in the generated Python module.
 %pythonbegin %{
 from __future__ import print_function, division

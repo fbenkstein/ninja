@@ -174,6 +174,78 @@ def set_debug_flags(flags):
         elif flag == "nostatcache":
             cvar.experimental_statcache = False
 
+class Tool(object):
+    run_after_flags = False
+    run_after_load = False
+    run_after_logs = False
+    name = None
+    description = None
+
+    def __init__(self, args):
+        self.args = args
+
+    def run(self, ninja_main):
+        raise NotImplementedError
+
+class ToolList(Tool):
+    name = "list"
+    run_after_flags = True
+
+    def run(self, ninja_main):
+        print("ninja subtools:")
+        for tool_class in tools:
+            if tool_class.description is not None:
+                print("%10s  %s" % (tool_class.name, tool_class.description))
+
+class ToolClean(Tool):
+    name = "clean"
+    description = "clean built files"
+    run_after_load = True
+
+    def run(self, ninja_main):
+        from optparse import OptionParser
+        option_parser = OptionParser("%prog [options] [targets]", prog="%s -t clean" % os.path.basename(sys.argv[0]))
+        option_parser.add_option("-g", dest="generator", help="also clean files marked as ninja generator output",
+                                 action="store_true", default=False)
+        option_parser.add_option("-r", dest="clean_rules", help="interpret targets as a list of rules to clean instead",
+                                 action="store_true", default=False)
+        options, arguments = option_parser.parse_args(self.args)
+
+        if options.clean_rules and len(arguments) == 0:
+            raise NinjaError("expected a rule to clean")
+
+        cleaner = Cleaner(ninja_main.state, ninja_main.config)
+
+        if len(arguments) > 0:
+            if options.clean_rules:
+                return cleaner.CleanRules(arguments)
+            else:
+                return cleaner.CleanTargets(arguments)
+        else:
+            return cleaner.CleanAll(options.generator)
+
+tools = [
+    ToolList,
+    # ToolGraph,
+    # ToolQuery,
+    # ToolBrowse,
+    # ToolMSVC,
+    # ToolTargets,
+    # ToolCommands,
+    ToolClean,
+    # ToolCompilationDatabase,
+    # ToolRecompact,
+]
+
+def choose_tool(option, option_string, value, parser):
+    for tool_class in tools:
+        if tool_class.name == value:
+            parser.values.tool = tool_class(parser.rargs[:])
+            del parser.rargs[:]
+            return
+
+    raise NinjaError("unknown tool: '%s'" % value)
+
 def main():
     from optparse import OptionParser
     default_job_count = multiprocessing.cpu_count() + 2
@@ -189,16 +261,24 @@ def main():
     option_parser.add_option("-v", dest="show_commands", help="show all command lines while building", action="store_true", default=False)
     option_parser.add_option("-d", dest="debug_flags", metavar="MODE", help="enable debugging (use -d list to list modes)",
                              action="append", choices=["explain", "keeprsp", "nostatcache", "list"], default=())
+    option_parser.add_option("-t", metavar="TOOL", type=str, dest="tool", action="callback", callback=choose_tool,
+                             help="""run a subtool (use -t list to list subtools)
+                             terminates toplevel options; further flags are passed to the tool""")
 
     options, targets = option_parser.parse_args()
 
     set_debug_flags(options.debug_flags)
 
     if options.dir is not None:
-        print("pyninja: Entering directory `%s'" % options.dir);
+        if options.tool is not None:
+            print("pyninja: Entering directory `%s'" % options.dir);
         os.chdir(options.dir)
 
     config = config_from_options(options)
+
+    if options.tool and options.tool.run_after_flags:
+        ninja = NinjaMain(config)
+        sys.exit(options.tool.run(ninja))
 
     # The build can take up to 2 passes: one to rebuild the manifest, then
     # another to build the desired target.
@@ -209,9 +289,16 @@ def main():
 
         try:
             parser.Load(options.file)
+
+            if options.tool and options.tool.run_after_load:
+                sys.exit(options.tool.run(ninja))
+
             ninja.EnsureBuildDirExists()
             ninja.OpenBuildLog()
             ninja.OpenDepsLog()
+
+            if options.tool and options.tool.run_after_logs:
+                sys.exit(options.tool.run(ninja))
 
             if cycle == 0 and ninja.RebuildManifest(options.file):
                 continue
