@@ -188,7 +188,7 @@ def main():
     option_parser.add_option("-k", dest="max_failures", help="keep going until N jobs fail [default=1]", type=int, default=1)
     option_parser.add_option("-v", dest="show_commands", help="show all command lines while building", action="store_true", default=False)
     option_parser.add_option("-d", dest="debug_flags", metavar="MODE", help="enable debugging (use -d list to list modes)",
-                             action="append", choices=["explain", "keeprsp", "nostatcache", "list"])
+                             action="append", choices=["explain", "keeprsp", "nostatcache", "list"], default=())
 
     options, targets = option_parser.parse_args()
 
