@@ -715,6 +715,11 @@ ninja_debug_flag(experimental_statcache)
 // Use  same typemap for rules as for targets.
 %apply (int target_count, char *targets[]) { (int rule_count, char *rules[]) };
 
+%threadallow Cleaner::CleanTarget;
+%threadallow Cleaner::CleanTargets;
+%threadallow Cleaner::CleanRule;
+%threadallow Cleaner::CleanRules;
+%threadallow Cleaner::CleanAll;
 struct Cleaner {
     Cleaner(State* state, const BuildConfig& config);
     Cleaner(State* state,
