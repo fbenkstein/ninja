@@ -413,12 +413,28 @@ struct BuildLogUser {
     virtual bool IsPathDead(StringPiece s) const = 0;
 };
 
+%inline %{
+typedef bool build_log_success_t;
+%}
+
+%typemap(out) build_log_success_t %{
+    if ($1) {
+        $result = Py_None;
+        Py_INCREF($result);
+    } else {
+        PyErr_Format(NinjaError, "Error writing to build log: %s", strerror(errno));
+        SWIG_fail;
+    }
+%}
+
 %threadallow BuildLog::Load;
 %threadallow BuildLog::OpenForWrite;
 struct BuildLog {
     success_and_message_t Load(const string& path, error_message_t err);
     success_and_message_t OpenForWrite(const string& path, const BuildLogUser& user, error_message_t err);
     void Close();
+    build_log_success_t RecordCommand(Edge* edge, int start_time, int end_time,
+                                      TimeStamp restat_mtime = 0);
 };
 
 %threadallow DepsLog::Load;
