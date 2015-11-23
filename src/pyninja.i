@@ -418,6 +418,7 @@ struct BuildLogUser {
 struct BuildLog {
     success_and_message_t Load(const string& path, error_message_t err);
     success_and_message_t OpenForWrite(const string& path, const BuildLogUser& user, error_message_t err);
+    void Close();
 };
 
 %threadallow DepsLog::Load;
@@ -425,6 +426,7 @@ struct BuildLog {
 struct DepsLog {
     success_and_message_t Load(const string& path, State* state, error_message_t err);
     success_and_message_t OpenForWrite(const string& path, error_message_t err);
+    void Close();
 };
 
 %inline %{
