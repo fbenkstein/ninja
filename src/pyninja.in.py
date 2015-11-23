@@ -68,6 +68,10 @@ class NinjaMain(BuildLogUser):
     def RebuildManifest(self, input_file):
         path, slash_bits = CanonicalizePath(input_file)
         node = self.state.LookupNode(path)
+
+        if node is None:
+            return False
+
         builder = Builder(self.state, self.config, self.build_log, self.deps_log, self.disk_interface)
 
         if not builder.AddTarget(node):
