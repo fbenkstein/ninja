@@ -756,6 +756,19 @@ struct Cleaner {
 
 %clear (int target_count, char *targets[]), (int rule_count, char *rules[]);
 
+%{
+#include "hash_log.h"
+%}
+
+%rename(HashLogFileName) kHashLogFileName;
+const char kHashLogFileName[];
+
+struct HashLog {
+    HashLog(const std::string& filename, DiskInterface* disk_interface);
+    void EdgeFinished(const Edge* edge, error_message_empty_t err);
+    bool Close();
+};
+
 // Switch on newer language features in the generated Python module.
 %pythonbegin %{
 from __future__ import print_function, division
