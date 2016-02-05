@@ -183,7 +183,7 @@ struct Tool {
     RUN_AFTER_LOAD,
 
     /// Run after loading the build/deps logs.
-    RUN_AFTER_LOGS,
+    RUN_AFTER_LOGS
   } when;
 
   /// Implementation of the tool.
@@ -994,8 +994,8 @@ int ReadFlags(int* argc, char*** argv,
 
   enum { OPT_VERSION = 1 };
   const option kLongOptions[] = {
-    { "help", no_argument, NULL, 'h' },
-    { "version", no_argument, NULL, OPT_VERSION },
+    { (char*)"help", no_argument, NULL, 'h' },
+    { (char*)"version", no_argument, NULL, OPT_VERSION },
     { NULL, 0, NULL, 0 }
   };
 

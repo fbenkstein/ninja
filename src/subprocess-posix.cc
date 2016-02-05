@@ -155,8 +155,8 @@ const string& Subprocess::GetOutput() const {
 
 int SubprocessSet::interrupted_;
 
-void SubprocessSet::SetInterruptedFlag(int signum) {
-  interrupted_ = signum;
+extern "C" void SetInterruptedFlag(int signum) {
+  SubprocessSet::interrupted_ = signum;
 }
 
 void SubprocessSet::HandlePendingInterruption() {

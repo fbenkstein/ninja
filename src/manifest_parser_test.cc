@@ -388,7 +388,7 @@ TEST_F(ParserTest, ReservedWords) {
 "default subninja\n"));
 }
 
-TEST_F(ParserTest, Errors) {
+TEST(ParserErrorTest, Errors) {
   {
     State state;
     ManifestParser parser(&state, NULL, kDupeEdgeActionWarn);
@@ -799,14 +799,13 @@ TEST_F(ParserTest, Errors) {
 }
 
 TEST_F(ParserTest, MissingInput) {
-  State state;
   ManifestParser parser(&state, &fs_, kDupeEdgeActionWarn);
   string err;
   EXPECT_FALSE(parser.Load("build.ninja", &err));
   EXPECT_EQ("loading 'build.ninja': No such file or directory", err);
 }
 
-TEST_F(ParserTest, MultipleOutputs) {
+TEST(ParserErrorTest, MultipleOutputs) {
   State state;
   ManifestParser parser(&state, NULL, kDupeEdgeActionWarn);
   string err;
@@ -816,7 +815,7 @@ TEST_F(ParserTest, MultipleOutputs) {
   EXPECT_EQ("", err);
 }
 
-TEST_F(ParserTest, MultipleOutputsWithDeps) {
+TEST(ParserErrorTest, MultipleOutputsWithDeps) {
   State state;
   ManifestParser parser(&state, NULL, kDupeEdgeActionWarn);
   string err;
@@ -1012,7 +1011,6 @@ TEST_F(ParserTest, UTF8) {
 }
 
 TEST_F(ParserTest, CRLF) {
-  State state;
   ManifestParser parser(&state, NULL, kDupeEdgeActionWarn);
   string err;
 

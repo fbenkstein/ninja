@@ -137,7 +137,6 @@ TEST_F(BuildLogTest, Truncate) {
   // crash when parsing.
   for (off_t size = statbuf.st_size; size > 0; --size) {
     BuildLog log2;
-    string err;
     EXPECT_TRUE(log2.OpenForWrite(kTestFilename, *this, &err));
     ASSERT_EQ("", err);
     log2.RecordCommand(state_.edges_[0], 15, 18);

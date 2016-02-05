@@ -28,7 +28,7 @@ struct State;
 
 enum DupeEdgeAction {
   kDupeEdgeActionWarn,
-  kDupeEdgeActionError,
+  kDupeEdgeActionError
 };
 
 /// Parses .ninja files.

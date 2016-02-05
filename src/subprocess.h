@@ -88,7 +88,6 @@ struct SubprocessSet {
   static BOOL WINAPI NotifyInterrupted(DWORD dwCtrlType);
   static HANDLE ioport_;
 #else
-  static void SetInterruptedFlag(int signum);
   static void HandlePendingInterruption();
   /// Store the signal number that causes the interruption.
   /// 0 if not interruption.

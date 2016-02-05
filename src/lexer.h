@@ -44,7 +44,7 @@ struct Lexer {
     POOL,
     RULE,
     SUBNINJA,
-    TEOF,
+    TEOF
   };
 
   /// Return a human-readable form of a token, used in error messages.

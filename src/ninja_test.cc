@@ -91,7 +91,7 @@ bool TestMatchesFilter(const char* test, const char* filter) {
 bool ReadFlags(int* argc, char*** argv, const char** test_filter) {
   enum { OPT_GTEST_FILTER = 1 };
   const option kLongOptions[] = {
-    { "gtest_filter", required_argument, NULL, OPT_GTEST_FILTER },
+    { (char*)"gtest_filter", required_argument, NULL, OPT_GTEST_FILTER },
     { NULL, 0, NULL, 0 }
   };
 
