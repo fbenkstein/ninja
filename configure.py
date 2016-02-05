@@ -332,7 +332,7 @@ if platform.is_msvc():
         cflags += ['/Ox', '/DNDEBUG', '/GL']
         ldflags += ['/LTCG', '/OPT:REF', '/OPT:ICF']
 elif platform.is_solaris() and platform.is_solaris_studio():
-    cflags = ['-g', '-H', '-w',
+    cflags = ['-g', '-H', '+w',
               '-features=no%rtti',
               '-features=no%except',
               '-library=stlport4',
