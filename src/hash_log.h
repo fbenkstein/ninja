@@ -58,26 +58,62 @@ struct HashLog {
   /// Recompact the hash log to reduce it to minimum size
   bool Recompact(const string &path, string* err);
 
+#if 0
   struct LogEntry {
     /// Unique id for each node so paths do not need to be stored for each
     /// record.
     unsigned id_;
-    /// Timestamp when the hash was taken.
-    TimeStamp mtime_;
-    /// Hash when recording as an input.
-    Hash input_hash_;
-    /// Combined hash of all inputs when recoding as an output.
-    Hash output_hash_;
+
+
+    /// When the hash.
+    struct Input {
+      unsigned id_;
+      Hash value_;
+
+      Input() : id_(0), value_(0) {}
+    };
+
+    unsigned input_count_;
+    Input *inputs_;
 
     LogEntry() : id_(0), mtime_(0), input_hash_(0), output_hash_(0) {}
   };
+#endif
 
-  typedef ExternalStringHashMap<LogEntry*>::Type Entries;
+  typedef ExternalStringHashMap<unsigned>::Type Ids;
+
+  struct HashRecord {
+    /// The timestamp of the file when the hash was computed.  Hashes are only
+    /// recomputed if the timestamp is different.
+    TimeStamp mtime_;
+    /// The size of the file when the hash was computed.  When comparing hashes
+    /// the file size is compared first.
+    unsigned size;
+    /// The hash value.
+    Hash value_;
+
+    HashRecord() : mtime_(0), size(0), value_(0) {}
+  };
+
+  struct OutputRecord {
+    typedef vector<pair<unsigned, HashRecord*> > Inputs;
+    Inputs inputs_;
+  };
 
  protected:
+#if 0
   bool WriteEntry(Node *node, LogEntry *entry, string *err);
+#endif
+  OutputRecord *GetRecord(Node *node) const;
+  HashRecord *GetInput(Node *node, OutputRecord *record) const;
 
+  bool HashIsClean(Node *node, HashRecord *hash, string* err);
+
+  Hash GetHash(Node *node, string* err);
+
+#if 0
   bool HashIsClean(Node *node, bool is_input, Hash *acc, string *err);
+#endif
 
   bool RecordHash(Node *node, bool is_input, Hash *acc, string *err);
 
@@ -87,7 +123,10 @@ struct HashLog {
 
   FileHasher *hasher_;
 
-  Entries entries_;
+  /// Map path names to ids.
+  Ids ids_;
+  vector<HashRecord*> inputs_;
+  vector<OutputRecord*> outputs_;
 
   bool needs_recompaction_;
 };

@@ -34,9 +34,11 @@
 static const char kFileSignature[] = "# ninjahashlog\n";
 static const int kCurrentVersion = 6;
 static const unsigned kMaxPathSize = (1 << 19) - 1;
+/// Refuse to hash files greater than this size.
+// static const unsigned kMaxFileSize = 16384;
 /// Mask bit used to signal a record being dirty or being followed by an path
 /// name.
-static const unsigned kIdMask = 2u << 31;
+// static const unsigned kIdMask = 2u << 31;
 
 HashLog::HashLog(FileHasher *hasher)
   : next_id_(0), file_(NULL), hasher_(hasher), needs_recompaction_(false)
@@ -52,6 +54,7 @@ void HashLog::Close() {
   file_ = NULL;
 }
 
+#if 0
 bool HashLog::Load(const std::string &path, State *state, std::string* err) {
   METRIC_RECORD(".ninja_hashes load");
   char buf[kMaxPathSize + 1];
@@ -193,6 +196,7 @@ bool HashLog::Load(const std::string &path, State *state, std::string* err) {
 
   return true;
 }
+#endif
 
 bool HashLog::OpenForWrite(const std::string &path, std::string* err) {
   file_ = fopen(path.c_str(), "ab");
@@ -232,21 +236,83 @@ bool HashLog::Recompact(const std::string &path, std::string* err) {
   return false;
 }
 
+HashLog::OutputRecord *HashLog::GetRecord(Node *node) const {
+  Ids::const_iterator it = ids_.find(node->path());
+
+  if (it != ids_.end())
+    return outputs_[it->second];
+  else
+    return NULL;
+}
+
+HashLog::HashRecord *HashLog::GetInput(Node *node, OutputRecord *record) const {
+  unsigned id;
+
+  {
+    Ids::const_iterator it = ids_.find(node->path());
+
+    if (it != ids_.end())
+      return NULL;
+
+    id = it->second;
+  }
+
+  {
+    OutputRecord::Inputs::iterator it = lower_bound(record->inputs_.begin(),
+                                                    record->inputs_.end(),
+                                                    OutputRecord::Inputs::value_type(id, NULL));
+
+    if (it == record->inputs_.end() || it->first != id)
+      return NULL;
+    else
+      return it->second;
+  }
+}
+
 bool HashLog::HashesAreClean(Node *output, Edge* edge, std::string* err) {
   METRIC_RECORD("checking hashes");
-  Hash output_hash = 0;
 
-  // Check if any inputs are updated.  Combine their hashes into the hash for
-  // the output.
+  OutputRecord *record = GetRecord(output);
+
+  // Never seen this output.
+  if (!record)
+    return false; 
+
+  // Wrong number of inputs, don't check anything.
+  if (record->inputs_.size() != edge->inputs_.size() - edge->order_only_deps_)
+    return false;
+
+  // Look at all inputs and check if they have been seen before with the same
+  // hash.
   for (vector<Node*>::const_iterator i = edge->inputs_.begin();
       i != edge->inputs_.end() - edge->order_only_deps_; ++i) {
-    if (!HashIsClean(*i, true, &output_hash, err))
+    HashRecord *input = GetInput(*i, record);
+    
+    // New input for this output.
+    if (!input)
+      return false; 
+
+    if (!HashIsClean(*i, input, err))
       return false;
   }
 
-  return HashIsClean(output, false, &output_hash, err);
+  return true;
 }
 
+bool HashLog::HashIsClean(Node *node, HashRecord *record, string *err) {
+  // mtime matches, assume it's clean.
+  if (node->mtime() == record->mtime_)
+    return true;
+
+  Hash hash = GetHash(node, err);
+
+  if (hash == 0)
+    return false;
+
+  return hash == record->value_;
+}
+
+#if 0
 bool HashLog::RecordHashes(Edge* edge, DiskInterface *disk_interface, std::string* err) {
   METRIC_RECORD("recording hashes");
   Hash output_hash = 0;
@@ -273,7 +339,9 @@ bool HashLog::RecordHashes(Edge* edge, DiskInterface *disk_interface, std::strin
 
   return true;
 }
+#endif
 
+#if 0
 /// Check if the node's hash matches the one recorded before.  If the node is
 /// an input combine its actual hash it into the accumulator otherwise record the
 /// accumulated hash of the inputs.  If the file is opened for writing and
@@ -302,6 +370,7 @@ bool HashLog::HashIsClean(Node* node, bool is_input, Hash *acc, string *err) {
     // Node is an input and it's mtime is newer.  Recompute and record hash.
     Hash old_hash = entry->input_hash_;
 
+    // XXX: early exit if size is different?
     if (hasher_->HashFile(node->path(), &entry->input_hash_, err) != DiskInterface::Okay) {
       *err = "error hashing file: " + *err;
       return false; 
@@ -429,3 +498,4 @@ bool HashLog::WriteEntry(Node *node, LogEntry *entry, string *err) {
 
   return true;
 }
+#endif
