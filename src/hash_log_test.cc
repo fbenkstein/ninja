@@ -358,6 +358,41 @@ TEST_F(HashLogTest, CheckOnlyFirst) {
   ASSERT_NE(edge.inputs_[1]->mtime(), log_.entries_[edge.inputs_[1]->path()]->mtime_);
 }
 
+TEST_F(HashLogTest, TwoEdgesSameInputs) {
+  // Create an edge with inputs and outputs.
+  Edge edge;
+  edge.outputs_.push_back(state_.GetNode("foo.o", 0));
+  edge.inputs_.push_back(state_.GetNode("foo.cc", 0));
+  edge.inputs_.push_back(state_.GetNode("foo.h", 0));
+  edge.inputs_.push_back(state_.GetNode("bar.h", 0));
+
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.inputs_[0]->path(), "void foo() {}"));
+  disk_interface_.Tick();
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.inputs_[1]->path(), "void foo();"));
+  disk_interface_.Tick();
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.inputs_[2]->path(), "void bar();"));
+  disk_interface_.Tick();
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.outputs_[0]->path(), "_Z3foov"));
+
+  // Create a second edge with the same inputs but a different output.
+  Edge edge2;
+  edge2.outputs_.push_back(state_.GetNode("foo-debug.o", 0));
+  edge2.inputs_ = edge.inputs_;
+
+  ASSERT_TRUE(disk_interface_.WriteFile(edge2.outputs_[0]->path(), "_Z3foov"));
+
+  // Open the log.
+  ASSERT_TRUE(log_.OpenForWrite(kTestFilename, &err));
+  ASSERT_TRUE(err.empty());
+
+  // Record hashes for the first edge.
+  ASSERT_TRUE(log_.RecordHashes(&edge, &disk_interface_, &err));
+  ASSERT_TRUE(err.empty());
+  ASSERT_EQ(4u, log_.entries_.size());
+  ASSERT_EQ(3u, disk_interface_.files_read_.size());
+
+}
+
 }  // anonymous namespace
 
 // needed tests:
