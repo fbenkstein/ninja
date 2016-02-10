@@ -65,7 +65,7 @@ struct HashLogTest : public testing::Test {
   string err;
 };
 
-TEST_F(HashLogTest, BasicInOut) {
+TEST_F(HashLogTest, NodeInOut) {
   // File does not exist yet.
   Node* node = state_.GetNode("input.txt", 0);
 
@@ -191,7 +191,7 @@ TEST_F(HashLogTest, BasicInOut) {
   }
 }
 
-TEST_F(HashLogTest, TestEdgeInOut) {
+TEST_F(HashLogTest, EdgeInOut) {
   // Create an edge with inputs and outputs.
   Edge edge;
   edge.outputs_.push_back(state_.GetNode("foo.o", 0));
@@ -233,13 +233,13 @@ TEST_F(HashLogTest, TestEdgeInOut) {
   ASSERT_EQ(4u, log_.entries_.size());
 
   // Recording hashes should have read the three input files.
-  EXPECT_EQ(3u, disk_interface_.files_read_.size());
+  ASSERT_EQ(3u, disk_interface_.files_read_.size());
   sort(disk_interface_.files_read_.begin(), disk_interface_.files_read_.end());
   unique(disk_interface_.files_read_.begin(), disk_interface_.files_read_.end());
-  EXPECT_EQ(3u, disk_interface_.files_read_.size());
+  ASSERT_EQ(3u, disk_interface_.files_read_.size());
 
   // The hash log should now contain entries for the inputs and the output.
-  EXPECT_EQ(4u, log_.entries_.size());
+  ASSERT_EQ(4u, log_.entries_.size());
 
   for (size_t i = 0; i < disk_interface_.files_read_.size(); ++i) {
     Node *node = state_.GetNode(disk_interface_.files_read_[i], 0);
@@ -264,7 +264,7 @@ TEST_F(HashLogTest, TestEdgeInOut) {
   ASSERT_TRUE(err.empty());
 }
 
-TEST_F(HashLogTest, TestLoadClose) {
+TEST_F(HashLogTest, WriteRead) {
   // Create an edge with inputs and outputs.
   Edge edge;
   edge.outputs_.push_back(state_.GetNode("foo.o", 0));
@@ -304,12 +304,65 @@ TEST_F(HashLogTest, TestLoadClose) {
   ASSERT_TRUE(err.empty());
 }
 
+TEST_F(HashLogTest, CheckOnlyFirst) {
+  // Create an edge with inputs and outputs.
+  Edge edge;
+  edge.outputs_.push_back(state_.GetNode("foo.o", 0));
+  edge.inputs_.push_back(state_.GetNode("foo.cc", 0));
+  edge.inputs_.push_back(state_.GetNode("foo.h", 0));
+  edge.inputs_.push_back(state_.GetNode("bar.h", 0));
+
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.inputs_[0]->path(), "void foo() {}"));
+  disk_interface_.Tick();
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.inputs_[1]->path(), "void foo();"));
+  disk_interface_.Tick();
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.inputs_[2]->path(), "void bar();"));
+  disk_interface_.Tick();
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.outputs_[0]->path(), "_Z3foov"));
+
+  // Open the log.
+  ASSERT_TRUE(log_.OpenForWrite(kTestFilename, &err));
+  ASSERT_TRUE(err.empty());
+
+  // Record hashes.
+  ASSERT_TRUE(log_.RecordHashes(&edge, &disk_interface_, &err));
+  ASSERT_TRUE(err.empty());
+  ASSERT_EQ(4u, log_.entries_.size());
+  ASSERT_EQ(3u, disk_interface_.files_read_.size());
+
+  // Update the first and second input.
+  disk_interface_.Tick();
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.inputs_[0]->path(), "void foo(int) {}"));
+  ASSERT_TRUE(edge.inputs_[0]->Stat(&disk_interface_, &err));
+  disk_interface_.Tick();
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.inputs_[1]->path(), "void foo(int);"));
+  ASSERT_TRUE(edge.inputs_[1]->Stat(&disk_interface_, &err));
+
+  disk_interface_.files_read_.clear();
+
+  // Hashes are now dirty.
+  ASSERT_FALSE(log_.HashesAreClean(edge.outputs_[0], &edge, &err));
+  ASSERT_TRUE(err.empty());
+  ASSERT_EQ(4u, log_.entries_.size());
+
+  // Only the first input should have been read.
+  ASSERT_EQ(1u, disk_interface_.files_read_.size());
+  ASSERT_EQ(edge.inputs_[0]->path(), disk_interface_.files_read_[0]);
+
+  // The first inputs's mtime should be updated.
+  ASSERT_TRUE(log_.entries_[edge.inputs_[0]->path()]);
+  ASSERT_EQ(edge.inputs_[0]->mtime(), log_.entries_[edge.inputs_[0]->path()]->mtime_);
+
+  // The second inputs's mtime should not be updated.
+  ASSERT_TRUE(log_.entries_[edge.inputs_[1]->path()]);
+  ASSERT_NE(edge.inputs_[1]->mtime(), log_.entries_[edge.inputs_[1]->path()]->mtime_);
+}
+
 }  // anonymous namespace
 
 // needed tests:
 // * repeated inputs (XOR hash combine will fail)
-// * only checks are only done to the first failing hash
-// * error paths
+// * error paths: missing output, missing inputs etc.
 // * recompacting
 // * rerecording the same hash should not increase the log size
 // * recording when an output doesn't actually exist
