@@ -265,6 +265,7 @@ TEST_F(HashLogTest, TestEdgeInOut) {
 }
 
 TEST_F(HashLogTest, TestLoadClose) {
+  // Create an edge with inputs and outputs.
   Edge edge;
   edge.outputs_.push_back(state_.GetNode("foo.o", 0));
   edge.inputs_.push_back(state_.GetNode("foo.cc", 0));
