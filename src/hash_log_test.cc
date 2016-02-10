@@ -17,6 +17,7 @@
 #include <string>
 #include <sstream>
 #include <iostream>
+#include <algorithm>
 #include <assert.h>
 
 #ifdef _WIN32
@@ -81,7 +82,6 @@ TEST_F(HashLogTest, BasicInOut) {
 
   // Write the dummy file.
   ASSERT_TRUE(disk_interface_.WriteFile(node->path(), "test"));
-  disk_interface_.Tick();
 
   // Check its hash.
   Hash expected_hash;
@@ -134,8 +134,8 @@ TEST_F(HashLogTest, BasicInOut) {
   }
 
   // Update the file with the same content as before.
-  ASSERT_TRUE(disk_interface_.WriteFile(node->path(), "test"));
   disk_interface_.Tick();
+  ASSERT_TRUE(disk_interface_.WriteFile(node->path(), "test"));
   ASSERT_TRUE(node->Stat(&disk_interface_, &err));
   ASSERT_EQ(2, node->mtime());
 
@@ -153,8 +153,8 @@ TEST_F(HashLogTest, BasicInOut) {
   }
 
   // Update the file with new content.
-  ASSERT_TRUE(disk_interface_.WriteFile(node->path(), "test_"));
   disk_interface_.Tick();
+  ASSERT_TRUE(disk_interface_.WriteFile(node->path(), "test_"));
   ASSERT_TRUE(node->Stat(&disk_interface_, &err));
   ASSERT_EQ(3, node->mtime());
 
@@ -200,7 +200,9 @@ TEST_F(HashLogTest, TestEdgeInOut) {
   edge.inputs_.push_back(state_.GetNode("bar.h", 0));
 
   ASSERT_TRUE(disk_interface_.WriteFile(edge.inputs_[0]->path(), "void foo() {}"));
+  disk_interface_.Tick();
   ASSERT_TRUE(disk_interface_.WriteFile(edge.inputs_[1]->path(), "void foo();"));
+  disk_interface_.Tick();
   ASSERT_TRUE(disk_interface_.WriteFile(edge.inputs_[2]->path(), "void bar();"));
 
   for (size_t i = 0; i < edge.inputs_.size(); ++i) {
@@ -216,8 +218,90 @@ TEST_F(HashLogTest, TestEdgeInOut) {
   // Hashes are dirty before the first build.
   ASSERT_FALSE(log_.HashesAreClean(edge.outputs_[0], &edge, &err));
   ASSERT_TRUE(err.empty());
+  ASSERT_EQ(0u, log_.entries_.size());
+
+  // Create the output.
+  disk_interface_.Tick();
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.outputs_[0]->path(), "_Z3foov"));
+  edge.outputs_[0]->ResetState();
+
+  ASSERT_EQ(0u, disk_interface_.files_read_.size());
+
+  // Record hashes.
+  ASSERT_TRUE(log_.RecordHashes(&edge, &disk_interface_, &err));
+  ASSERT_TRUE(err.empty());
+  ASSERT_EQ(4u, log_.entries_.size());
+
+  // Recording hashes should have read the three input files.
+  EXPECT_EQ(3u, disk_interface_.files_read_.size());
+  sort(disk_interface_.files_read_.begin(), disk_interface_.files_read_.end());
+  unique(disk_interface_.files_read_.begin(), disk_interface_.files_read_.end());
+  EXPECT_EQ(3u, disk_interface_.files_read_.size());
+
+  // The hash log should now contain entries for the inputs and the output.
+  EXPECT_EQ(4u, log_.entries_.size());
+
+  for (size_t i = 0; i < disk_interface_.files_read_.size(); ++i) {
+    Node *node = state_.GetNode(disk_interface_.files_read_[i], 0);
+    HashLog::Entries::iterator it = log_.entries_.find(node->path());
+    ASSERT_NE(log_.entries_.end(), it);
+    ASSERT_EQ(node->mtime(), it->second->mtime_);
+    ASSERT_NE(0u, it->second->input_hash_);
+    ASSERT_EQ(0u, it->second->output_hash_);
+  }
+
+  {
+    Node *node = edge.outputs_[0];
+    HashLog::Entries::iterator it = log_.entries_.find(node->path());
+    ASSERT_NE(log_.entries_.end(), it);
+    ASSERT_EQ(node->mtime(), it->second->mtime_);
+    ASSERT_EQ(0u, it->second->input_hash_);
+    ASSERT_NE(0u, it->second->output_hash_);
+  }
+
+  // Now the hashes should be clean.
+  ASSERT_TRUE(log_.HashesAreClean(edge.outputs_[0], &edge, &err));
+  ASSERT_TRUE(err.empty());
 }
 
+TEST_F(HashLogTest, TestLoadClose) {
+  Edge edge;
+  edge.outputs_.push_back(state_.GetNode("foo.o", 0));
+  edge.inputs_.push_back(state_.GetNode("foo.cc", 0));
+  edge.inputs_.push_back(state_.GetNode("foo.h", 0));
+  edge.inputs_.push_back(state_.GetNode("bar.h", 0));
+
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.inputs_[0]->path(), "void foo() {}"));
+  disk_interface_.Tick();
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.inputs_[1]->path(), "void foo();"));
+  disk_interface_.Tick();
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.inputs_[2]->path(), "void bar();"));
+  disk_interface_.Tick();
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.outputs_[0]->path(), "_Z3foov"));
+
+  // Open the log.
+  ASSERT_TRUE(log_.OpenForWrite(kTestFilename, &err));
+  ASSERT_TRUE(err.empty());
+
+  // Record hashes.
+  ASSERT_TRUE(log_.RecordHashes(&edge, &disk_interface_, &err));
+  ASSERT_TRUE(err.empty());
+  ASSERT_EQ(4u, log_.entries_.size());
+
+  // Close old log object.
+  log_.Close();
+
+  // Open log in new object.
+  TestHashLog log2(&disk_interface_);
+
+  ASSERT_TRUE(log2.Load(kTestFilename, &state_, &err));
+  ASSERT_TRUE(err.empty());
+  ASSERT_EQ(4u, log_.entries_.size());
+
+  // Files should still be known to be clean.
+  ASSERT_TRUE(log_.HashesAreClean(edge.outputs_[0], &edge, &err));
+  ASSERT_TRUE(err.empty());
+}
 
 }  // anonymous namespace
 
@@ -227,3 +311,6 @@ TEST_F(HashLogTest, TestEdgeInOut) {
 // * error paths
 // * recompacting
 // * rerecording the same hash should not increase the log size
+// * recording when an output doesn't actually exist
+// * when two outputs have the some inputs and only one is rebuilt, the other should still be rebuilt.
+// * hash of an output that is also an input

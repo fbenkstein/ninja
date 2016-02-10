@@ -72,6 +72,8 @@ struct HashLog {
     LogEntry() : id_(0), mtime_(0), input_hash_(0), output_hash_(0) {}
   };
 
+  typedef ExternalStringHashMap<LogEntry*>::Type Entries;
+
  protected:
   bool WriteEntry(Node *node, LogEntry *entry, string *err);
 
@@ -84,8 +86,6 @@ struct HashLog {
   FILE* file_;
 
   FileHasher *hasher_;
-
-  typedef ExternalStringHashMap<LogEntry*>::Type Entries;
 
   Entries entries_;
 
