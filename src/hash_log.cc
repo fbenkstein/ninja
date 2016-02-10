@@ -33,7 +33,10 @@
 /// The file banner in the persisted hash log.
 static const char kFileSignature[] = "# ninjahashlog\n";
 static const int kCurrentVersion = 6;
-const unsigned kMaxPathSize = (1 << 19) - 1;
+static const unsigned kMaxPathSize = (1 << 19) - 1;
+/// Mask bit used to signal a record being dirty or being followed by an path
+/// name.
+static const unsigned kIdMask = 2u << 31;
 
 HashLog::HashLog(FileHasher *hasher)
   : next_id_(0), file_(NULL), hasher_(hasher), needs_recompaction_(false)
@@ -96,9 +99,9 @@ bool HashLog::Load(const std::string &path, State *state, std::string* err) {
       break;
     }
 
-    bool has_path = (entry->id_ & 0x8000000) != 0;
+    bool has_path = (entry->id_ & kIdMask) != 0;
 
-    entry->id_ &= 0x7FFFFFFF;
+    entry->id_ &= ~kIdMask;
 
     if (has_path) {
       // Read the path.
@@ -261,15 +264,9 @@ bool HashLog::RecordHashes(Edge* edge, DiskInterface *disk_interface, std::strin
       return false;
   }
 
-  // Record hashes for outputs.  Combine their hashes into a seed for the
-  // outputs.
+  // Record combined hash of inputs as hash for input.
   for (vector<Node*>::const_iterator i = edge->outputs_.begin();
       i != edge->outputs_.end(); ++i) {
-    if (!(*i)->Stat(disk_interface, err)) {
-      *err = "error restatting in hash log: " + *err;
-      return false;
-    }
-
     if (!RecordHash(*i, false, &output_hash, err))
       return false;
   }
@@ -283,7 +280,7 @@ bool HashLog::RecordHashes(Edge* edge, DiskInterface *disk_interface, std::strin
 /// the node changed record the new hash.
 bool HashLog::HashIsClean(Node* node, bool is_input, Hash *acc, string *err) {
   // Stat should have happened before.
-  if (!node->exists() || !node->status_known())
+  if (is_input && (!node->exists() || !node->status_known()))
     return false;
 
   Entries::iterator it = entries_.find(node->path());
@@ -292,40 +289,52 @@ bool HashLog::HashIsClean(Node* node, bool is_input, Hash *acc, string *err) {
   if (it == entries_.end())
     return false;
 
-  Hash old_hash = is_input ? it->second->input_hash_ : it->second->output_hash_;
+  LogEntry *entry = it->second;
 
-  if (it->second->mtime_ != node->mtime()) {
-    if (is_input) {
-      // Node is an input and it's mtime is newer.  Recompute and record hash.
+  // This entry has been checked already.
+  if (entry->id_ & kIdMask)
+    return false;
 
-      if (hasher_->HashFile(node->path(), &it->second->input_hash_, err) != DiskInterface::Okay) {
-        *err = "error hashing file: " + *err;
-        return false; 
-      }
-    } else {
-      // Node is an output and it's mtime is newer.  Record the combined hash
-      // of its inputs.
-      it->second->output_hash_ = *acc;
+  bool is_clean = true;
+  bool should_write = false;
+
+  if (is_input && entry->mtime_ != node->mtime()) {
+    // Node is an input and it's mtime is newer.  Recompute and record hash.
+    Hash old_hash = entry->input_hash_;
+
+    if (hasher_->HashFile(node->path(), &entry->input_hash_, err) != DiskInterface::Okay) {
+      *err = "error hashing file: " + *err;
+      return false; 
     }
 
-    it->second->mtime_ = node->mtime();
-
-    // Log is opened for writing, go ahead and record the hash since we have it
-    // already.
-    if (file_ != NULL && !WriteEntry(node, it->second, err))
-      return false;
+    entry->mtime_ = node->mtime();
+    is_clean = old_hash == entry->input_hash_;
+    should_write = true;
+  } else if (!is_input && entry->output_hash_ != *acc) {
+    // Node is an output and it's combined hash is different. Record the
+    // combined hash of its inputs.
+    entry->output_hash_ = *acc;
+    should_write = true;
+    is_clean = false;
   }
 
-  Hash new_hash;
+  // Log is opened for writing, go ahead and record the entry since we have it
+  // already.
+  if (should_write && file_ != NULL && !WriteEntry(node, entry, err))
+    return false;
 
-  if (is_input) {
-    new_hash = it->second->input_hash_;
-    *acc += it->second->input_hash_;
+  if (is_clean) {
+    if (is_input)
+      *acc += entry->input_hash_;
+
+    return true;
   } else {
-    new_hash = it->second->output_hash_;
+    // Mark as dirty so we don't check again.
+    entry->id_ |= kIdMask;
+    return false;
   }
 
-  return old_hash == new_hash;
+  return is_clean;
 }
 
 /// Record the node's hash.  If the node is an input combine its actual hash
@@ -335,26 +344,32 @@ bool HashLog::RecordHash(Node *node, bool is_input, Hash *acc, string *err) {
   Entries::iterator it = entries_.find(node->path());
   LogEntry* entry;
 
-  if (it != entries_.end())
+  bool should_write = false;
+
+  if (it != entries_.end()) {
     entry = it->second;
-  else
+  } else {
     entry = new LogEntry;
+  }
 
-  if (entry->mtime_ != node->mtime()) {
-    entry->mtime_ = node->mtime();
-
-    if (is_input) {
-      if (hasher_->HashFile(node->path(), &entry->input_hash_, err) != DiskInterface::Okay) {
-        *err = "hashing file: " + *err;
-        return false; 
-      }
-    } else {
-      entry->output_hash_ = *acc;
+  if (is_input && entry->mtime_ != node->mtime()) {
+    // Node is an input and it's mtime is newer.  Recompute and record hash.
+    if (hasher_->HashFile(node->path(), &entry->input_hash_, err) != DiskInterface::Okay) {
+      *err = "hashing file: " + *err;
+      return false; 
     }
 
-    if (!WriteEntry(node, entry, err))
-      return false;
+    should_write = true;
+    entry->mtime_ = node->mtime();
+  } else if (!is_input && entry->output_hash_ != *acc) {
+    // Node is an output and it's combined hash is different. Record the
+    // combined hash of its inputs.
+    entry->output_hash_ = *acc;
+    should_write = true;
   }
+
+  if (should_write && !WriteEntry(node, entry, err))
+      return false;
 
   if (it == entries_.end())
     entries_.insert(Entries::value_type(node->path(), entry));
@@ -368,17 +383,22 @@ bool HashLog::RecordHash(Node *node, bool is_input, Hash *acc, string *err) {
 static const char padding_data[sizeof(HashLog::LogEntry)] = {0};
 
 bool HashLog::WriteEntry(Node *node, LogEntry *entry, string *err) {
+  /// If the high bit is set the entry is followed by a path name
+  /// otherwise the path should have been read earlier.
+
   if (entry->id_ == 0)
     // We haven't seen this node before, record its path and give it an id and
     // mark it as having the path appended.
-    entry->id_ = next_id_++ | 0x8000000;
+    entry->id_ = next_id_++ | kIdMask;
 
   if (fwrite(entry, 1, sizeof(*entry), file_) < 1) {
       err->assign(strerror(errno));
       return false;
   }
 
-  if (entry->id_ & 0x8000000) {
+  if (entry->id_ & kIdMask) {
+    entry->id_ &= ~kIdMask;
+
     const size_t entry_size = sizeof(LogEntry);
     unsigned path_size = node->path().size();
 
@@ -400,8 +420,6 @@ bool HashLog::WriteEntry(Node *node, LogEntry *entry, string *err) {
       err->assign(strerror(errno));
       return false;
     }
-
-    entry->id_ &= 0x7FFFFFFF;
   }
 
   if (fflush(file_) != 0) {

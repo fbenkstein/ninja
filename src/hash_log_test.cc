@@ -133,9 +133,8 @@ TEST_F(HashLogTest, NodeInOut) {
     ASSERT_EQ(2, disk_interface_.files_read_.size());
   }
 
-  // Update the file with the same content as before.
-  disk_interface_.Tick();
-  ASSERT_TRUE(disk_interface_.WriteFile(node->path(), "test"));
+  // Update the file's timestamp.
+  disk_interface_.files_[node->path()].mtime = disk_interface_.Tick();
   ASSERT_TRUE(node->Stat(&disk_interface_, &err));
   ASSERT_EQ(2, node->mtime());
 
@@ -175,6 +174,17 @@ TEST_F(HashLogTest, NodeInOut) {
     ASSERT_EQ(1, log_.entries_.size());
     ASSERT_EQ(node->path(), log_.entries_.begin()->first.AsString());
     ASSERT_EQ(node->mtime(), log_.entries_.begin()->second->mtime_);
+    ASSERT_EQ(5, disk_interface_.files_read_.size());
+  }
+
+  // Checking again will still report the file as dirty again, though.  Also,
+  // it won't reread the file.
+  {
+    Hash hash = 0;
+    ASSERT_FALSE(log_.HashIsClean(node, true, &hash, &err));
+    ASSERT_TRUE(err.empty());
+    ASSERT_EQ(expected_hash, hash);
+    ASSERT_EQ(1, log_.entries_.size());
     ASSERT_EQ(5, disk_interface_.files_read_.size());
   }
 
@@ -254,7 +264,8 @@ TEST_F(HashLogTest, EdgeInOut) {
     Node *node = edge.outputs_[0];
     HashLog::Entries::iterator it = log_.entries_.find(node->path());
     ASSERT_NE(log_.entries_.end(), it);
-    ASSERT_EQ(node->mtime(), it->second->mtime_);
+    // For outputs the mtime is not stored.
+    ASSERT_EQ(0u, it->second->mtime_);
     ASSERT_EQ(0u, it->second->input_hash_);
     ASSERT_NE(0u, it->second->output_hash_);
   }
@@ -358,7 +369,7 @@ TEST_F(HashLogTest, CheckOnlyFirst) {
   ASSERT_NE(edge.inputs_[1]->mtime(), log_.entries_[edge.inputs_[1]->path()]->mtime_);
 }
 
-TEST_F(HashLogTest, TwoEdgesSameInputs) {
+TEST_F(HashLogTest, SameInputs) {
   // Create an edge with inputs and outputs.
   Edge edge;
   edge.outputs_.push_back(state_.GetNode("foo.o", 0));
@@ -388,18 +399,98 @@ TEST_F(HashLogTest, TwoEdgesSameInputs) {
   // Record hashes for the first edge.
   ASSERT_TRUE(log_.RecordHashes(&edge, &disk_interface_, &err));
   ASSERT_TRUE(err.empty());
-  ASSERT_EQ(4u, log_.entries_.size());
-  ASSERT_EQ(3u, disk_interface_.files_read_.size());
 
+  // Hashes are clean for the first edge.
+  ASSERT_TRUE(log_.HashesAreClean(edge.outputs_[0], &edge, &err));
+  ASSERT_TRUE(err.empty());
+
+  // Hashes are still dirty for the second edge.
+  ASSERT_FALSE(log_.HashesAreClean(edge2.outputs_[0], &edge, &err));
+  ASSERT_TRUE(err.empty());
+
+  // Record hashes for the second edge.
+  ASSERT_TRUE(log_.RecordHashes(&edge2, &disk_interface_, &err));
+  ASSERT_TRUE(err.empty());
+
+  // Update an input's content.
+  disk_interface_.Tick();
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.inputs_[2]->path(), "void bar(int);"));
+  ASSERT_TRUE(edge.inputs_[2]->Stat(&disk_interface_, &err));
+
+  // Hashes are dirty for both edges.
+  ASSERT_FALSE(log_.HashesAreClean(edge.outputs_[0], &edge, &err));
+  ASSERT_TRUE(err.empty());
+  ASSERT_FALSE(log_.HashesAreClean(edge2.outputs_[0], &edge, &err));
+  ASSERT_TRUE(err.empty());
+
+  // Record hashes for the first edge again.
+  ASSERT_TRUE(log_.RecordHashes(&edge, &disk_interface_, &err));
+  ASSERT_TRUE(err.empty());
+
+  // Hashes are still dirty for the second edge.
+  ASSERT_FALSE(log_.HashesAreClean(edge2.outputs_[0], &edge, &err));
+  ASSERT_TRUE(err.empty());
 }
+
+TEST_F(HashLogTest, RepeatedInput) {
+  // Create an edge with inputs and outputs.
+  Edge edge;
+  edge.outputs_.push_back(state_.GetNode("foo.o", 0));
+  edge.inputs_.push_back(state_.GetNode("foo.cc", 0));
+  edge.inputs_.push_back(state_.GetNode("foo.h", 0));
+  edge.inputs_.push_back(state_.GetNode("bar.h", 0));
+
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.inputs_[0]->path(), "void foo() {}"));
+  disk_interface_.Tick();
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.inputs_[1]->path(), "void foo();"));
+  disk_interface_.Tick();
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.inputs_[2]->path(), "void bar();"));
+  disk_interface_.Tick();
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.outputs_[0]->path(), "_Z3foov"));
+
+  // Append an input a second time.
+  edge.inputs_.push_back(state_.GetNode("bar.h", 0));
+
+  // Open the log and record hashes.
+  ASSERT_TRUE(log_.OpenForWrite(kTestFilename, &err));
+  ASSERT_TRUE(err.empty());
+  ASSERT_TRUE(log_.RecordHashes(&edge, &disk_interface_, &err));
+  ASSERT_TRUE(err.empty());
+
+  // Update the duplicated input's timestamp.
+  disk_interface_.files_[edge.inputs_[2]->path()].mtime = disk_interface_.Tick();
+  ASSERT_TRUE(edge.inputs_[2]->Stat(&disk_interface_, &err));
+  ASSERT_TRUE(err.empty());
+
+  disk_interface_.files_read_.clear();
+
+  // Hashes should still be clean but the file should be reread.
+  ASSERT_TRUE(log_.HashesAreClean(edge.outputs_[0], &edge, &err));
+  ASSERT_TRUE(err.empty());
+  ASSERT_EQ(1u, disk_interface_.files_read_.size());
+  ASSERT_EQ(edge.inputs_[2]->path(), disk_interface_.files_read_[0]);
+
+  // Update the duplicated input's content.
+  disk_interface_.Tick();
+  ASSERT_TRUE(disk_interface_.WriteFile(edge.inputs_[2]->path(), "void bar(int);"));
+
+  // Hashes should be dirty now.
+  ASSERT_TRUE(log_.HashesAreClean(edge.outputs_[0], &edge, &err));
+  ASSERT_TRUE(err.empty());
+  ASSERT_EQ(1u, disk_interface_.files_read_.size());
+  ASSERT_EQ(edge.inputs_[2]->path(), disk_interface_.files_read_[0]);
+}
+
+// * repeated inputs (XOR hash combine will fail)
 
 }  // anonymous namespace
 
 // needed tests:
-// * repeated inputs (XOR hash combine will fail)
 // * error paths: missing output, missing inputs etc.
 // * recompacting
 // * rerecording the same hash should not increase the log size
 // * recording when an output doesn't actually exist
 // * when two outputs have the some inputs and only one is rebuilt, the other should still be rebuilt.
 // * hash of an output that is also an input
+// * reordering inputs should not make a difference
+// * check hashes without opening for write

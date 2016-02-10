@@ -45,7 +45,8 @@ struct HashLog {
   bool Load(const string& path, State* state, string* err);
 
   /// Check whether an edge's input and output hashes match previously
-  /// recorded values.
+  /// recorded values.  The stat information on the inputs and outputs
+  /// must be current for this to give the correct result.
   bool HashesAreClean(Node *output, Edge* edge, string* err);
 
   bool OpenForWrite(const string &path, string* err);
@@ -59,8 +60,7 @@ struct HashLog {
 
   struct LogEntry {
     /// Unique id for each node so paths do not need to be stored for each
-    /// record.  If the high bit is set the entry is followed by a path name
-    /// otherwise the path should have been read earlier.
+    /// record.
     unsigned id_;
     /// Timestamp when the hash was taken.
     TimeStamp mtime_;
