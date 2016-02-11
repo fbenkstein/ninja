@@ -80,8 +80,10 @@ struct HashLog {
   };
 #endif
 
+  /// Path to node id mappings.
   typedef ExternalStringHashMap<unsigned>::Type Ids;
 
+  /// Hash record for a node.
   struct HashRecord {
     /// The timestamp of the file when the hash was computed.  Hashes are only
     /// recomputed if the timestamp is different.
@@ -95,8 +97,17 @@ struct HashLog {
     HashRecord() : mtime_(0), size(0), value_(0) {}
   };
 
+  struct IdHashRecord : HashRecord {
+    /// Id of the node this hash is for.
+    unsigned id_;
+
+    IdHashRecord() : id_(0) {}
+  };
+
+  /// Record for an output of an edge.
   struct OutputRecord {
-    typedef vector<pair<unsigned, HashRecord*> > Inputs;
+    /// Records of all inputs sorted by the id.
+    typedef vector<IdHashRecord> Inputs;
     Inputs inputs_;
   };
 
@@ -104,12 +115,13 @@ struct HashLog {
 #if 0
   bool WriteEntry(Node *node, LogEntry *entry, string *err);
 #endif
-  OutputRecord *GetRecord(Node *node) const;
-  HashRecord *GetInput(Node *node, OutputRecord *record) const;
 
-  bool HashIsClean(Node *node, HashRecord *hash, string* err);
+  OutputRecord *GetOutputRecord(Node *node) const;
+  IdHashRecord *GetInputRecord(Node *node, OutputRecord *output) const;
 
-  Hash GetHash(Node *node, string* err);
+  bool HashIsClean(Node *node, IdHashRecord *input, string* err);
+
+  // Hash GetHash(Node *node, string* err);
 
 #if 0
   bool HashIsClean(Node *node, bool is_input, Hash *acc, string *err);
@@ -125,8 +137,10 @@ struct HashLog {
 
   /// Map path names to ids.
   Ids ids_;
-  vector<HashRecord*> inputs_;
+  /// Output records indexed by id.
   vector<OutputRecord*> outputs_;
+  /// Last computed hash of an input by id.
+  vector<HashRecord*> hashes_;
 
   bool needs_recompaction_;
 };

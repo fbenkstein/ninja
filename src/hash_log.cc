@@ -31,7 +31,7 @@
 #include "metrics.h"
 
 /// The file banner in the persisted hash log.
-static const char kFileSignature[] = "# ninjahashlog\n";
+static const char kFileSignature[] = "# ninjahash\n";
 static const int kCurrentVersion = 6;
 static const unsigned kMaxPathSize = (1 << 19) - 1;
 /// Refuse to hash files greater than this size.
@@ -72,7 +72,7 @@ bool HashLog::Load(const std::string &path, State *state, std::string* err) {
     valid_header = false;
   if (!valid_header || strcmp(buf, kFileSignature) != 0 ||
       version != kCurrentVersion) {
-    if (version == 1)
+    if (version < kCurrentVersion)
       *err = "hash log version change; rebuilding";
     else
       *err = "bad hash log signature or version; starting over";
@@ -236,7 +236,8 @@ bool HashLog::Recompact(const std::string &path, std::string* err) {
   return false;
 }
 
-HashLog::OutputRecord *HashLog::GetRecord(Node *node) const {
+#if 0
+HashLog::OutputHashRecord *HashLog::GetOutputRecord(Node *node) const {
   Ids::const_iterator it = ids_.find(node->path());
 
   if (it != ids_.end())
@@ -244,8 +245,10 @@ HashLog::OutputRecord *HashLog::GetRecord(Node *node) const {
   else
     return NULL;
 }
+#endif
 
-HashLog::HashRecord *HashLog::GetInput(Node *node, OutputRecord *record) const {
+#if 0
+HashLog::InputHashRecord *HashLog::GetInputRecord(Node *node, OutputHashRecord *record) const {
   unsigned id;
 
   {
@@ -258,9 +261,10 @@ HashLog::HashRecord *HashLog::GetInput(Node *node, OutputRecord *record) const {
   }
 
   {
-    OutputRecord::Inputs::iterator it = lower_bound(record->inputs_.begin(),
-                                                    record->inputs_.end(),
-                                                    OutputRecord::Inputs::value_type(id, NULL));
+    OutputHashRecord::Inputs::value_type search_value(id, NULL);
+    OutputHashRecord::Inputs::iterator it = lower_bound(record->inputs_.begin(),
+                                                        record->inputs_.end(),
+                                                        search_value);
 
     if (it == record->inputs_.end() || it->first != id)
       return NULL;
@@ -268,25 +272,26 @@ HashLog::HashRecord *HashLog::GetInput(Node *node, OutputRecord *record) const {
       return it->second;
   }
 }
+#endif
 
-bool HashLog::HashesAreClean(Node *output, Edge* edge, std::string* err) {
+bool HashLog::HashesAreClean(Node *output_node, Edge* edge, std::string* err) {
   METRIC_RECORD("checking hashes");
 
-  OutputRecord *record = GetRecord(output);
+  OutputRecord *output = GetOutputRecord(output_node);
 
   // Never seen this output.
-  if (!record)
+  if (!output)
     return false; 
 
   // Wrong number of inputs, don't check anything.
-  if (record->inputs_.size() != edge->inputs_.size() - edge->order_only_deps_)
+  if (output->inputs_.size() != edge->inputs_.size() - edge->order_only_deps_)
     return false;
 
   // Look at all inputs and check if they have been seen before with the same
   // hash.
   for (vector<Node*>::const_iterator i = edge->inputs_.begin();
       i != edge->inputs_.end() - edge->order_only_deps_; ++i) {
-    HashRecord *input = GetInput(*i, record);
+    IdHashRecord *input = GetInputRecord(*i, output);
     
     // New input for this output.
     if (!input)
@@ -299,17 +304,26 @@ bool HashLog::HashesAreClean(Node *output, Edge* edge, std::string* err) {
   return true;
 }
 
-bool HashLog::HashIsClean(Node *node, HashRecord *record, string *err) {
+bool HashLog::HashIsClean(Node *node, IdHashRecord *record, string *err) {
   // mtime matches, assume it's clean.
   if (node->mtime() == record->mtime_)
     return true;
 
-  Hash hash = GetHash(node, err);
+#if 0
+  unsigned id;
 
-  if (hash == 0)
-    return false;
+  {
+    Ids::const_iterator it = ids_.find(node->path());
 
-  return hash == record->value_;
+    // node is unknown
+    if (it != ids_.end())
+      return false;
+
+    id = it->second;
+  }
+
+
+#endif
 }
 
 #if 0

@@ -936,7 +936,7 @@ bool NinjaMain::OpenHashLog(bool recompact_only) {
 
   if (!config_.dry_run) {
     if (!hash_log_.OpenForWrite(path, &err)) {
-      Error("opening deps log: %s", err.c_str());
+      Error("opening hash log: %s", err.c_str());
       return false;
     }
   }

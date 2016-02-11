@@ -46,6 +46,7 @@ struct FileHasher {
   /// Read file and store hash.  On success, return Okay.
   /// On error, return another Status and fill |err|.
   virtual FileReader::Status HashFile(const string& path, Hash *hash,
+                                      size_t *actual_length, size_t max_length,
                                       string* err) = 0;
 };
 
