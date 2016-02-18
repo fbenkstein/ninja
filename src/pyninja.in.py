@@ -184,7 +184,7 @@ def main():
     for cycle in range(2):
         ninja = NinjaMain(config)
 
-        parser = ManifestParser(ninja.state)
+        parser = ManifestParser(ninja.state, ninja.disk_interface, kDupeEdgeActionWarn)
 
         try:
             parser.Load(options.file)

@@ -330,18 +330,18 @@ else:
               '-Wno-deprecated',
               '-Wno-missing-field-initializers',
               '-Wno-unused-parameter',
-              '-fno-rtti',
-              '-fno-exceptions',
               '-fvisibility=hidden', '-pipe',
               '-DNINJA_PYTHON="%s"' % options.with_python]
+    if not options.debug and not options.enable_pyninja:
+        cflags.append('-fno-rtti')
+    if options.enable_pyninja:
+        cflags.append('-fPIC')  # Python extensions are shared libraries.
+    else:
+        cflags.append('-fno-exceptions')
     if options.debug:
         cflags += ['-D_GLIBCXX_DEBUG', '-D_GLIBCXX_DEBUG_PEDANTIC']
-        cflags.remove('-fno-rtti')  # Needed for above pedanticness.
     else:
         cflags += ['-O2', '-DNDEBUG']
-    if options.enable_pyninja:
-        cflags.remove('-fno-exceptions')  # Needed for SWIG directors
-        cflags.append('-fPIC')
     try:
         proc = subprocess.Popen(
             [CXX, '-fdiagnostics-color', '-c', '-x', 'c++', '/dev/null',
@@ -661,7 +661,7 @@ def get_python_cflags():
     else:
         proc = subprocess.Popen([get_python_config(), '--cflags'],
                                 stdout=subprocess.PIPE)
-        return proc.communicate()[0]
+        return proc.communicate()[0].replace('-Wstrict-prototypes', '')
 def get_python_ldflags():
     if platform.is_msvc():
         return ''
@@ -684,6 +684,7 @@ if options.enable_pyninja:
                              'swig.exe' if platform.is_windows() else 'swig')
     n.variable('swig', SWIG)
     swigflags = [
+        '-Isrc',
         '-c++',
         '-python',
         '-Wextra',
@@ -708,7 +709,7 @@ if options.enable_pyninja:
     pyninja_extension = n.build(built('_pyninja' + py_extension_suffix),
                                       'link', pyninja_obj,
                                       variables={'libs': ninja_lib, 'ldflags': '$pyldflags'})
-    n.build('pyninja', 'phony', pyninja_extension)
+    all_targets += n.build('pyninja', 'phony', pyninja_extension)
     n.newline()
 
 n.build('all', 'phony', all_targets)

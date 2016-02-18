@@ -171,7 +171,6 @@ struct BuildConfig {
   int parallelism;
   int failures_allowed;
   double max_load_average;
-  double max_memory_usage;
 };
 
 // Vector helper for vector<Node*> and vector<Edge*>.
@@ -260,52 +259,27 @@ PyObject *CanonicalizePath(const string &path) {
 }
 %}
 
-%{
-typedef ManifestParser::FileReader FileReader;
-%}
-
 struct FileReader {
+    enum Status {
+        Okay,
+        NotFound,
+        OtherError
+    };
+
     virtual ~FileReader() {}
-    virtual bool ReadFile(const string& path, string* content, string* err) = 0;
-};
-
-%{
-struct RealFileReader : public FileReader {
-  virtual bool ReadFile(const string& path, string* content, string* err) {
-    return ::ReadFile(path, content, err) == 0;
-  }
-};
-%}
-
-struct RealFileReader : FileReader {
-    virtual bool ReadFile(const string& path, string* content, string* err);
-};
-
-%{
-FileReader *get_RealFileReader() {
-    static RealFileReader file_reader;
-    return &file_reader;
-}
-%}
-
-%typemap(default) FileReader *file_reader {
-    $1 = get_RealFileReader();
-}
-
-struct ManifestParser {
-    ManifestParser(State* state, FileReader* file_reader);
-    success_and_message_t Load(const string& filename, error_message_t err);
+    virtual Status ReadFile(const string& path, string* contents, error_message_t err) = 0;
 };
 
 typedef int TimeStamp;
 
-struct DiskInterface {
+struct DiskInterface : FileReader {
     virtual ~DiskInterface() {}
-    virtual TimeStamp Stat(const string& path) const = 0;
+    virtual TimeStamp Stat(const string& path, error_message_empty_t err) const = 0;
 };
 
 struct RealDiskInterface : public DiskInterface {
-    virtual TimeStamp Stat(const string& path) const;
+    virtual TimeStamp Stat(const string& path, error_message_empty_t err) const;
+    virtual Status ReadFile(const string& path, string* contents, error_message_t err);
 };
 
 %{
@@ -314,6 +288,17 @@ DiskInterface *get_RealDiskInterface() {
     return &disk_interface;
 }
 %}
+
+enum DupeEdgeAction {
+  kDupeEdgeActionWarn,
+  kDupeEdgeActionError,
+};
+
+struct ManifestParser {
+    ManifestParser(State* state, FileReader* file_reader,
+                   DupeEdgeAction dupe_edge_action);
+    success_and_message_t Load(const string& filename, error_message_t err);
+};
 
 %typemap(check) Node* %{
     if (!$1) {
@@ -339,6 +324,15 @@ struct Builder {
 // Switch on newer language features in the generated Python module.
 %pythonbegin %{
 from __future__ import print_function, division
+
+def _enable_run_from_src():
+    'Enable running from the source directory.'
+    import sys, os
+    path = os.path.dirname(os.path.abspath(__file__))
+    if os.path.basename(path) == 'src':
+        sys.path.append(os.path.join(path, '..', 'build'))
+_enable_run_from_src()
+del _enable_run_from_src
 %}
 
 // Include custom Python code into the wrapper module.
