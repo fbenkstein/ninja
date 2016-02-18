@@ -211,6 +211,8 @@ parser.add_option('--with-gtest', metavar='PATH', help='ignored')
 parser.add_option('--with-python', metavar='EXE',
                   help='use EXE as the Python interpreter',
                   default=os.path.basename(sys.executable))
+parser.add_option('--enable-pyninja', action='store_true',
+                  help='build pyninja Python module')
 parser.add_option('--force-pselect', action='store_true',
                   help='ppoll() is used by default where available, '
                        'but some platforms may need to use pselect instead',)
@@ -252,7 +254,7 @@ configure_args = sys.argv[1:]
 if '--bootstrap' in configure_args:
     configure_args.remove('--bootstrap')
 n.variable('configure_args', ' '.join(configure_args))
-env_keys = set(['CXX', 'AR', 'CFLAGS', 'LDFLAGS'])
+env_keys = set(['CXX', 'AR', 'CFLAGS', 'LDFLAGS', 'SWIG'])
 configure_env = dict((k, os.environ[k]) for k in os.environ if k in env_keys)
 if configure_env:
     config_str = ' '.join([k + '=' + pipes.quote(configure_env[k])
@@ -337,6 +339,9 @@ else:
         cflags.remove('-fno-rtti')  # Needed for above pedanticness.
     else:
         cflags += ['-O2', '-DNDEBUG']
+    if options.enable_pyninja:
+        cflags.remove('-fno-exceptions')  # Needed for SWIG directors
+        cflags.append('-fPIC')
     try:
         proc = subprocess.Popen(
             [CXX, '-fdiagnostics-color', '-c', '-x', 'c++', '/dev/null',
@@ -646,6 +651,64 @@ if host.is_linux():
            command="misc/packaging/rpmbuild.sh",
            description='Building rpms..')
     n.build('rpm', 'rpmbuild')
+    n.newline()
+
+def get_python_config():
+    return 'python%s-config' % sysconfig.get_config_var('py_version_short')
+def get_python_cflags():
+    if platform.is_msvc():
+        return '-I' + sysconfig.get_config_var('INCLUDEPY')
+    else:
+        proc = subprocess.Popen([get_python_config(), '--cflags'],
+                                stdout=subprocess.PIPE)
+        return proc.communicate()[0]
+def get_python_ldflags():
+    if platform.is_msvc():
+        return ''
+    else:
+        proc = subprocess.Popen([get_python_config(), '--ldflags'],
+                                stdout=subprocess.PIPE)
+        return '-shared ' + proc.communicate()[0]
+
+if options.enable_pyninja:
+    import sysconfig
+    n.comment('pyninja is a Python interface for ninja internals')
+
+    if platform.is_msvc():
+        n.variable('pycxx', '$cxx')
+    else:
+        n.variable('pycxx', sysconfig.get_config_var('CXX'))
+    n.variable('pycflags', '$cflags ' + get_python_cflags())
+    n.variable('pyldflags', '$ldflags ' + get_python_ldflags())
+    SWIG = configure_env.get('SWIG',
+                             'swig.exe' if platform.is_windows() else 'swig')
+    n.variable('swig', SWIG)
+    swigflags = [
+        '-c++',
+        '-python',
+        '-Wextra',
+        '-threads',
+        '-builtin',
+        '-modern',
+        '-modernargs',
+        '-extranative',
+    ]
+    n.variable('swigflags', ' '.join(shell_escape(flag) for flag in swigflags))
+    n.rule('swig',
+        command='$swig -MMD -MT $out -MF $out.d $swigflags -o $out $in',
+        description='SWIG $out',
+        deps='gcc',
+        depfile='$out.d',
+    )
+    # XXX: implicit_outputs=built('pyninja.py')
+    n.build(src('_pyninja.cc'), 'swig', src('pyninja.i'),
+                implicit=src('pyninja.in.py'))
+    pyninja_obj = cxx('_pyninja', variables={'cflags': '$pycflags'})
+    py_extension_suffix = sysconfig.get_config_var('SO')
+    pyninja_extension = n.build(built('_pyninja' + py_extension_suffix),
+                                      'link', pyninja_obj,
+                                      variables={'libs': ninja_lib, 'ldflags': '$pyldflags'})
+    n.build('pyninja', 'phony', pyninja_extension)
     n.newline()
 
 n.build('all', 'phony', all_targets)

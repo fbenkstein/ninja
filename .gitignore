@@ -31,3 +31,8 @@ TAGS
 # Ninja output
 .ninja_deps
 .ninja_log
+
+# pyninja swig output
+/src/_pyninja.cc
+/src/_pyninja.h
+/src/pyninja.py
