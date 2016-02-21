@@ -175,12 +175,35 @@ bool DependencyScan::RecomputeOutputDirty(Edge* edge,
     }
 
     if (output_mtime < most_recent_input->mtime()) {
-      EXPLAIN("%soutput %s older than most recent input %s "
-              "(%d vs %d)",
-              used_restat ? "restat of " : "", output->path().c_str(),
-              most_recent_input->path().c_str(),
-              output_mtime, most_recent_input->mtime());
-      return true;
+      if (hash_log() && edge->GetBindingBool("hash_input")) {
+        string err;
+        bool hashes_are_clean = hash_log()->HashesAreClean(output, edge, &err);
+        if (!hashes_are_clean) {
+          if (err.empty()) {
+            EXPLAIN("%soutput %s older than most recent input %s "
+                "(%d vs %d) and hashes of some input changed",
+                used_restat ? "restat of " : "", output->path().c_str(),
+                most_recent_input->path().c_str(),
+                output_mtime, most_recent_input->mtime());
+            return true;
+          } else {
+            EXPLAIN("%soutput %s older than most recent input %s "
+                "(%d vs %d) and rehashing of inputs failed",
+                used_restat ? "restat of " : "", output->path().c_str(),
+                most_recent_input->path().c_str(),
+                output_mtime, most_recent_input->mtime());
+            Error(err.c_str());     // would be disabled, but we log the error
+            return true;
+          }
+        }
+      } else {
+        EXPLAIN("%soutput %s older than most recent input %s "
+                "(%d vs %d)",
+                used_restat ? "restat of " : "", output->path().c_str(),
+                most_recent_input->path().c_str(),
+                output_mtime, most_recent_input->mtime());
+        return true;
+      }
     }
   }
 
