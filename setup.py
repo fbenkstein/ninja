@@ -17,20 +17,21 @@ from distutils.core import setup
 from distutils.errors import DistutilsError
 from setuptools.command.develop import develop
 
+ninja_executable = 'ninja'
+
 if os.name == 'nt':
-    ninja_executable = 'ninja.exe'
-else:
-    ninja_executable = './ninja'
+    ninja_executable += 'ninja.exe'
 
 class NinjaBuildExt(build_ext):
     def run(self):
         if not os.path.exists(self.build_temp):
             os.makedirs(self.build_temp)
 
-        if os.path.exists(os.path.join(self.build_temp, 'build.ninja')):
-            self.build_with_ninja()
-        else:
+        if not os.path.exists(os.path.join(self.build_temp, 'build.ninja')) or \
+           not os.path.exists(os.path.join(self.build_temp, ninja_executable)):
             self.run_configure()
+
+        self.build_with_ninja()
 
     def run_external_command(self, args, *varargs, **kwds):
         try:
@@ -56,7 +57,7 @@ class NinjaBuildExt(build_ext):
                                   env=env, cwd=self.build_temp)
 
     def build_with_ninja(self):
-        self.run_external_command(args=[ninja_executable, 'pyninja'], cwd=self.build_temp)
+        self.run_external_command(args=[os.path.join(self.build_temp, ninja_executable), '-C', self.build_temp, 'pyninja'])
 
 class NinjaDevelop(develop):
     def finalize_options(self):

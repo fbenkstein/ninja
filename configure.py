@@ -678,7 +678,7 @@ if options.enable_pyninja:
         n.variable('pycxx', '$cxx')
     else:
         n.variable('pycxx', sysconfig.get_config_var('CXX'))
-    n.variable('pycflags', '$cflags ' + get_python_cflags())
+    n.variable('pycflags', '$cflags -I$root/src ' + get_python_cflags())
     n.variable('pyldflags', '$ldflags ' + get_python_ldflags())
     SWIG = configure_env.get('SWIG',
                              'swig.exe' if platform.is_windows() else 'swig')
@@ -704,8 +704,8 @@ if options.enable_pyninja:
     )
     # XXX: implicit_outputs=built('pyninja.py')
     n.build(built('_pyninja.cc'), 'swig', src('pyninja.i'),
-                implicit=src('pyninja.in.py'))
-    pyninja_obj = n.build(built('_pyninja' + objext), 'cxx', src('_pyninja.cc'),
+            implicit=src('pyninja.in.py'))
+    pyninja_obj = n.build(built('_pyninja' + objext), 'cxx', built('_pyninja.cc'),
                           variables={'cflags': '$pycflags'})
     py_extension_suffix = sysconfig.get_config_var('SO')
     pyninja_extension = n.build(built('_pyninja' + py_extension_suffix),
