@@ -33,6 +33,6 @@ TAGS
 .ninja_log
 
 # pyninja swig output
-/src/_pyninja.cc
-/src/_pyninja.h
-/src/pyninja.py
+# /src/_pyninja.cc
+# /src/_pyninja.h
+# /src/pyninja.py

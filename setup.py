@@ -10,8 +10,9 @@ try:
 except ImportError:
     pass
 
-from distutils.cmd import Command
 from distutils.command.install import install
+from distutils.command.build import build
+from distutils.command.build_ext import build_ext
 from distutils.core import setup
 from distutils.errors import DistutilsError
 from setuptools.command.develop import develop
@@ -21,26 +22,15 @@ if os.name == 'nt':
 else:
     ninja_executable = './ninja'
 
-class NinjaBuild(Command):
-    user_options = [
-        ('swig=', None,
-         "path to the SWIG executable"),
-        ('debug', 'g',
-         "compile extensions and libraries with debugging information"),
-   ]
-
-    boolean_options = ['debug']
-
-    def initialize_options(self):
-        self.swig = None
-        self.debug = None
-
-    def finalize_options(self):
-        pass
-
+class NinjaBuildExt(build_ext):
     def run(self):
-        self.run_configure()
-        self.build_with_ninja()
+        if not os.path.exists(self.build_temp):
+            os.makedirs(self.build_temp)
+
+        if os.path.exists(os.path.join(self.build_temp, 'build.ninja')):
+            self.build_with_ninja()
+        else:
+            self.run_configure()
 
     def run_external_command(self, args, *varargs, **kwds):
         try:
@@ -50,23 +40,23 @@ class NinjaBuild(Command):
 
     def run_configure(self):
         configure_args = ['--with-python='+sys.executable,
-                          '--enable-pyninja']
+                          '--enable-pyninja',
+                          '--bootstrap']
         if self.debug:
             configure_args += ['--debug']
-
-        if not os.path.exists(ninja_executable):
-            configure_args += ['--bootstrap']
 
         env = os.environ.copy()
 
         if self.swig is not None:
             env['SWIG'] = self.swig
 
-        self.run_external_command([sys.executable, 'configure.py'] + configure_args,
-                                  env=env)
+        configure_path = os.path.relpath(os.path.abspath('configure.py'),
+                                         os.path.abspath(self.build_temp))
+        self.run_external_command([sys.executable, configure_path] + configure_args,
+                                  env=env, cwd=self.build_temp)
 
     def build_with_ninja(self):
-        self.run_external_command(args=[ninja_executable, 'pyninja'])
+        self.run_external_command(args=[ninja_executable, 'pyninja'], cwd=self.build_temp)
 
 class NinjaDevelop(develop):
     def finalize_options(self):
@@ -80,7 +70,7 @@ class NinjaInstall(install):
     pass
 
 def extract_version():
-    r = re.compile(r'const char\* kNinjaVersion = "(.*)";')
+    r = re.compile(r'const char\* kNinjaVersion = "(.*?)(\.git)?";')
     f = open(os.path.join("src", "version.cc"))
 
     try:
@@ -93,7 +83,8 @@ def extract_version():
 version = extract_version()
 
 commands = {
-    'build': NinjaBuild,
+    # 'build': NinjaBuild,
+    'build_ext': NinjaBuildExt,
     'install': NinjaInstall,
     'develop': NinjaDevelop,
 }
