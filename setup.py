@@ -14,13 +14,14 @@ from distutils.cmd import Command
 from distutils.command.install import install
 from distutils.core import setup
 from distutils.errors import DistutilsError
+from setuptools.command.develop import develop
 
 if os.name == 'nt':
     ninja_executable = 'ninja.exe'
 else:
     ninja_executable = './ninja'
 
-class build(Command):
+class NinjaBuild(Command):
     user_options = [
         ('swig=', None,
          "path to the SWIG executable"),
@@ -36,7 +37,7 @@ class build(Command):
 
     def finalize_options(self):
         pass
- 
+
     def run(self):
         self.run_configure()
         self.build_with_ninja()
@@ -67,6 +68,14 @@ class build(Command):
     def build_with_ninja(self):
         self.run_external_command(args=[ninja_executable, 'pyninja'])
 
+class NinjaDevelop(develop):
+    def finalize_options(self):
+        pass
+
+    def run(self):
+        self.run_command("build")
+        # super(NinjaInstall, self).run()
+
 class NinjaInstall(install):
     pass
 
@@ -83,10 +92,16 @@ def extract_version():
 
 version = extract_version()
 
+commands = {
+    'build': NinjaBuild,
+    'install': NinjaInstall,
+    'develop': NinjaDevelop,
+}
+
 setup(
     name='pyninja',
     version=version,
-    cmdclass={'build': build, 'install': NinjaInstall},
+    cmdclass=commands,
     url='https://ninja-build.org/',
     description='Ninja is a small build system with a focus on speed.',
     long_description='''Ninja is a small build system with a focus on speed. It
